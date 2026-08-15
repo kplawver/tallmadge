@@ -12,7 +12,7 @@ require "time"
 require "set"
 
 module Tallmadge
-  VERSION = "0.1.0"
+  VERSION = "0.1.1"
 
   # Every user-facing failure raises this; the CLI rescues it, prints via
   # Reporter, and exits 1.
