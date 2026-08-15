@@ -24,12 +24,20 @@ The CLI binary is named **`clpr`** (*Culper*).
 
 ## Installation
 
-### Prerequisites
-- Ruby 3.2+ (tested up to Ruby 4.0+)
+### Via Homebrew (Recommended)
+
+```bash
+brew tap kplawver/tap
+brew install tallmadge
+```
+
+### Manual Installation
+
+#### Prerequisites
+- Ruby 3.2+
 - Bundler
 
-### Setup
-
+#### Setup
 ```bash
 git clone https://github.com/kplawver/tallmadge.git
 cd tallmadge
