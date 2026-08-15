@@ -28,6 +28,7 @@ The CLI binary is named **`clpr`** (*Culper*).
 
 ```bash
 brew tap kplawver/tap
+brew trust kplawver/tap
 brew install tallmadge
 ```
 
@@ -54,7 +55,15 @@ clpr setup
 clpr init --onboard
 ```
 
-This safely checks if you already have an existing `~/.agents` directory, creates a timestamped backup in `~/.tallmadge/backups/`, imports your custom components, scans and imports external MCP server configurations (from Claude, Cursor, Cline/Roo, Oh My Pi), and imports plugins from other harnesses.
+This safely checks if you already have an existing `~/.agents` directory, creates a timestamped backup in `~/.tallmadge/backups/`, imports custom components as standalone plugins, scans and imports external MCP server configurations (from Claude, Cursor, Cline/Roo, Oh My Pi) and marketplaces, with deduplication across all sources.
+
+To remove Tallmadge management and restore your original `~/.agents` backup:
+
+```bash
+clpr restore
+# or restore from a specific backup
+clpr restore --from ~/.tallmadge/backups/YYYYMMDDTHHMMSSZ-agents-backup
+```
 ---
 
 ## Command Reference

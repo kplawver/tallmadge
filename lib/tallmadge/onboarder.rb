@@ -6,8 +6,8 @@ require "time"
 
 module Tallmadge
   # Handles first-time setup and onboarding: detecting and backing up existing
-  # ~/.agents directories, importing existing MCP servers and harness plugins,
-  # and configuring Tallmadge management without destroying user configurations.
+  # ~/.agents directories, importing existing MCP servers, plugins, and marketplaces
+  # from other harnesses, with deduplication, and configuring Tallmadge management.
   class Onboarder
     attr_reader :state, :input, :output
 
@@ -22,9 +22,11 @@ module Tallmadge
 
       agents_findings = inspect_agents_dir
       mcp_findings = inspect_mcp_configs
+      marketplace_findings = inspect_harness_marketplaces
       plugin_findings = inspect_harness_plugins
 
-      if !agents_findings[:exists] && mcp_findings.empty? && plugin_findings.empty?
+      if !agents_findings[:exists] && mcp_findings.empty? &&
+         marketplace_findings.empty? && plugin_findings.empty?
         Reporter.info "No existing unmanaged .agents directory or external configurations detected."
         created = Paths.ensure_skeleton!
         created.each { |dir| Reporter.ok "created #{dir}" }
@@ -46,6 +48,10 @@ module Tallmadge
         handle_mcp_imports(mcp_findings, non_interactive: non_interactive, auto_yes: auto_yes)
       end
 
+      if marketplace_findings.any?
+        handle_marketplace_imports(marketplace_findings, non_interactive: non_interactive, auto_yes: auto_yes)
+      end
+
       if plugin_findings.any?
         handle_plugin_imports(plugin_findings, non_interactive: non_interactive, auto_yes: auto_yes)
       end
@@ -65,7 +71,6 @@ module Tallmadge
 
       store_base = File.realpath(Paths.store_dir) rescue nil
 
-      # Check unmanaged items
       unmanaged_items = []
       managed_items = []
 
@@ -181,6 +186,58 @@ module Tallmadge
       findings["Oh My Pi (#{omp_mcp})"] = { path: omp_mcp, servers: servers } if servers && !servers.empty?
     end
 
+    def inspect_harness_marketplaces
+      findings = {}
+
+      claude_mp_file = File.join(Dir.home, ".claude", "plugins", "known_marketplaces.json")
+      if File.file?(claude_mp_file)
+        data = JSON.parse(File.read(claude_mp_file)) rescue nil
+        if data.is_a?(Hash)
+          data.each do |name, info|
+            next unless info.is_a?(Hash)
+
+            source = info["source"]
+            repo = source.is_a?(Hash) ? (source["repo"] || source["url"]) : source
+            install_loc = info["installLocation"]
+
+            source_spec = if repo && !repo.empty?
+                            repo
+                          elsif install_loc && Dir.exist?(install_loc)
+                            install_loc
+                          end
+
+            if source_spec
+              findings["Claude Marketplace: #{name}"] = {
+                name: name,
+                source: source_spec,
+                source_type: "claude"
+              }
+            end
+          end
+        end
+      end
+
+      claude_settings = File.join(Dir.home, ".claude", "settings.json")
+      if File.file?(claude_settings)
+        data = JSON.parse(File.read(claude_settings)) rescue nil
+        extra = data && data["extraKnownMarketplaces"]
+        if extra.is_a?(Hash)
+          extra.each do |name, info|
+            source = info.is_a?(Hash) ? (info["repo"] || info["url"] || info["path"]) : info
+            if source && !source.empty?
+              findings["Claude Settings Marketplace: #{name}"] ||= {
+                name: name,
+                source: source,
+                source_type: "claude-settings"
+              }
+            end
+          end
+        end
+      end
+
+      findings
+    end
+
     def inspect_harness_plugins
       findings = {}
 
@@ -260,12 +317,24 @@ module Tallmadge
 
       temp_source = backup_dest
 
-      # Move original directory out of the way and create clean skeleton
-      FileUtils.rm_rf(Paths.agents_home)
-      Paths.ensure_skeleton!
+      # Clean out section directories before importing so new symlinks don't collide
+      clean_section_directories!
 
       import_user_files_from_backup(temp_source)
       import_components_from_backup(temp_source)
+    end
+
+    def clean_section_directories!
+      Paths::SECTIONS.each do |sec|
+        sec_dir = Paths.agents_section(sec)
+        FileUtils.rm_rf(sec_dir) if Dir.exist?(sec_dir)
+      end
+      # Also remove composed files if unmanaged before recomposition
+      %w[agents.md AGENTS.md mcp.json].each do |f|
+        target = File.join(Paths.agents_home, f)
+        File.delete(target) if File.exist?(target) && !File.symlink?(target)
+      end
+      Paths.ensure_skeleton!
     end
 
     def import_user_files_from_backup(backup_dir)
@@ -293,54 +362,88 @@ module Tallmadge
     end
 
     def import_components_from_backup(backup_dir)
-      components_exist = Paths::SECTIONS.any? do |sec|
-        sec_dir = File.join(backup_dir, sec)
-        Dir.exist?(sec_dir) && Dir.children(sec_dir).reject { |c| c.start_with?(".") }.any?
-      end
+      imported_count = 0
 
-      return unless components_exist
-
-      plugin_id = "imported-agents"
-      dest = Paths.plugin_dir(plugin_id)
-      FileUtils.mkdir_p(dest)
-
+      # Process individual items in skills, agents, tasks, memories as standalone plugins
       Paths::SECTIONS.each do |sec|
         sec_dir = File.join(backup_dir, sec)
         next unless Dir.exist?(sec_dir)
 
-        dest_sec = File.join(dest, sec)
-        FileUtils.mkdir_p(dest_sec)
-        FileUtils.cp_r(File.join(sec_dir, "."), dest_sec)
+        Dir.children(sec_dir).reject { |c| c.start_with?(".") }.sort.each do |entry_name|
+          entry_path = File.join(sec_dir, entry_name)
+          # Derive plugin ID based on component name
+          base_name = if File.directory?(entry_path)
+                        entry_name
+                      else
+                        File.basename(entry_name, ".*")
+                      end
+
+          plugin_id = Store.derive_id(base_name)
+          if @state.plugins.key?(plugin_id)
+            plugin_id = Store.derive_id("#{base_name}-#{sec.chomp('s')}")
+          end
+
+          # Copy component into a discrete standalone plugin directory structure in store
+          dest = Paths.plugin_dir(plugin_id)
+          dest_sec = File.join(dest, sec, entry_name)
+          FileUtils.mkdir_p(File.dirname(dest_sec))
+
+          if File.directory?(entry_path)
+            FileUtils.cp_r(entry_path, dest_sec)
+          else
+            FileUtils.cp(entry_path, dest_sec)
+          end
+
+          # Write standalone plugin manifest
+          meta_dir = File.join(dest, ".omp-plugin")
+          FileUtils.mkdir_p(meta_dir)
+          File.write(
+            File.join(meta_dir, "plugin.json"),
+            JSON.pretty_generate({
+              "name" => base_name,
+              "description" => "#{sec.capitalize} component migrated from prior ~/.agents"
+            }) + "\n"
+          )
+
+          # Scan & register in State
+          scan_result = Store.scan(dest)
+          now = Time.now.utc.iso8601
+          @state.plugins[plugin_id] = {
+            "installedAt" => now,
+            "updatedAt" => now,
+            "source" => { "type" => "path", "path" => entry_path },
+            "components" => scan_result["components"]
+          }
+          entry = @state.ensure_profile_plugin!(plugin_id)
+
+          # Mark all components active in active profile
+          (entry["components"] || {}).each do |s, items|
+            if s == "agentsMd"
+              items["active"] = true if items.is_a?(Hash)
+            elsif items.is_a?(Hash)
+              items.each_value { |info| info["active"] = true if info.is_a?(Hash) }
+            end
+          end
+
+          singular_type = sec.chomp("s")
+          Reporter.ok "Imported #{singular_type}: #{Reporter.name(plugin_id)}"
+          imported_count += 1
+        end
       end
 
-      meta_dir = File.join(dest, ".omp-plugin")
-      FileUtils.mkdir_p(meta_dir)
-      File.write(
-        File.join(meta_dir, "plugin.json"),
-        JSON.pretty_generate({ "name" => "Imported Agents", "description" => "Components migrated from prior ~/.agents" }) + "\n"
-      )
-
-      scan_result = Store.scan(dest)
-      now = Time.now.utc.iso8601
-      @state.plugins[plugin_id] = {
-        "installedAt" => now,
-        "updatedAt" => now,
-        "source" => { "type" => "path", "path" => backup_dir },
-        "components" => scan_result["components"]
-      }
-      @state.ensure_profile_plugin!(plugin_id)
-
-      Activator.new(@state).activate(plugin_id)
-      Reporter.ok "Migrated existing #{plugin_id} into Tallmadge store and activated all components"
+      Reporter.ok "Migrated #{imported_count} standalone plugin(s) from prior ~/.agents into Tallmadge store" if imported_count.positive?
     end
 
     def handle_mcp_imports(mcp_findings, non_interactive: false, auto_yes: false)
       Reporter.info "\nFound external MCP server configurations:"
 
+      candidate_servers = {}
       mcp_findings.each do |source_name, info|
         Reporter.info "  From #{source_name}:"
         info[:servers].each do |name, config|
           Reporter.info "    - #{name}: #{config['command'] || config[:command] || 'custom'}"
+          candidate_servers[name] ||= { config: config, sources: [] }
+          candidate_servers[name][:sources] << source_name
         end
       end
 
@@ -359,21 +462,79 @@ module Tallmadge
                      end
       current_data["mcpServers"] ||= {}
 
+      plugin_provided_servers = {}
+      @state.plugins.each do |pid, p_entry|
+        p_servers = p_entry.dig("components", "mcpServers") || {}
+        p_servers.each_key { |sname| plugin_provided_servers[sname] = pid }
+      end
+
       imported_count = 0
-      mcp_findings.each do |_source_name, info|
-        info[:servers].each do |name, config|
-          if current_data["mcpServers"].key?(name)
-            Reporter.warn "MCP server '#{name}' already present in user configuration, keeping existing."
-          else
-            current_data["mcpServers"][name] = config
-            imported_count += 1
-          end
+      skipped_count = 0
+
+      candidate_servers.each do |name, data|
+        config = data[:config]
+        if current_data["mcpServers"].key?(name)
+          Reporter.warn "MCP server '#{name}' already present in user configuration (skipping duplicate from #{data[:sources].join(', ')})"
+          skipped_count += 1
+        elsif plugin_provided_servers.key?(name)
+          Reporter.warn "MCP server '#{name}' already provided by plugin '#{plugin_provided_servers[name]}' (skipping duplicate)"
+          skipped_count += 1
+        else
+          current_data["mcpServers"][name] = config
+          imported_count += 1
         end
       end
 
       File.write(user_mcp_file, JSON.pretty_generate(current_data) + "\n")
       @state.user_content["mcpJson"] = "profiles/#{@state.active_profile_name}/mcp.json"
-      Reporter.ok "Imported #{imported_count} MCP server(s) into profile '#{@state.active_profile_name}'"
+      Reporter.ok "Imported #{imported_count} MCP server(s) into profile '#{@state.active_profile_name}' (#{skipped_count} skipped/deduped)"
+    end
+
+    def handle_marketplace_imports(marketplace_findings, non_interactive: false, auto_yes: false)
+      Reporter.info "\nFound external marketplaces from other harnesses:"
+      marketplace_findings.each_key do |display|
+        Reporter.info "  - #{display}"
+      end
+
+      prompt = "Import and add these marketplaces to Tallmadge?"
+      should_import = auto_yes || (non_interactive ? true : prompt_yes_no(prompt, default: true))
+      return unless should_import
+
+      imported_count = 0
+      skipped_count = 0
+
+      marketplace_findings.each do |_display, info|
+        name = info[:name]
+        source = info[:source]
+
+        if @state.marketplaces.key?(name)
+          Reporter.info "Marketplace '#{name}' already exists in Tallmadge (skipping duplicate)"
+          @state.profile_marketplaces << name unless @state.profile_marketplaces.include?(name)
+          skipped_count += 1
+          next
+        end
+
+        existing_with_same_source = @state.marketplaces.find do |_mname, minfo|
+          msrc = minfo["source"]
+          msrc && (msrc["repo"] == source || msrc["url"] == source || msrc["path"] == source)
+        end
+
+        if existing_with_same_source
+          Reporter.info "Marketplace source #{source.inspect} already added as '#{existing_with_same_source[0]}' (skipping duplicate)"
+          skipped_count += 1
+          next
+        end
+
+        begin
+          Marketplace.add(@state, source)
+          imported_count += 1
+        rescue StandardError => e
+          Reporter.err "Failed to add marketplace from #{source}: #{e.message}"
+        end
+      end
+
+      @state.save
+      Reporter.ok "Marketplace import complete: #{imported_count} added, #{skipped_count} skipped/deduped."
     end
 
     def handle_plugin_imports(plugin_findings, non_interactive: false, auto_yes: false)
@@ -387,24 +548,115 @@ module Tallmadge
       return unless should_import
 
       installer = Installer.new(@state)
+      imported_count = 0
+      skipped_count = 0
+
       plugin_findings.each do |_display, info|
-        id = Store.derive_id(info[:id] || info[:path])
+        raw_id = info[:id] || info[:path]
+        id = Store.derive_id(raw_id)
+        source_path = File.expand_path(info[:path])
+
+        if @state.plugins.key?(id)
+          existing_path = @state.plugins[id].dig("source", "path")
+          if existing_path && File.expand_path(existing_path) == source_path
+            Reporter.info "Plugin '#{id}' already installed from #{source_path} (skipping duplicate)"
+            skipped_count += 1
+            next
+          end
+        end
+
+        duplicate_source = @state.plugins.find do |_pid, pinfo|
+          psrc = pinfo["source"]
+          psrc && psrc["type"] == "path" && psrc["path"] && File.expand_path(psrc["path"]) == source_path
+        end
+
+        if duplicate_source
+          Reporter.info "Plugin at #{source_path} already installed as '#{duplicate_source[0]}' (skipping duplicate)"
+          skipped_count += 1
+          next
+        end
+
+        begin
+          candidate_comp = Store.scan_components(source_path)
+          matching_plugin = @state.plugins.find do |_pid, pentry|
+            existing_comp = pentry["components"] || {}
+            same_skills = candidate_comp["skills"].keys.sort == (existing_comp["skills"] || {}).keys.sort
+            same_agents = candidate_comp["agents"].keys.sort == (existing_comp["agents"] || {}).keys.sort
+            !candidate_comp["skills"].empty? && same_skills && same_agents
+          end
+
+          if matching_plugin
+            Reporter.info "Plugin components from #{source_path} already provided by '#{matching_plugin[0]}' (skipping duplicate)"
+            skipped_count += 1
+            next
+          end
+        rescue StandardError
+          # continue to attempt install if scan fails
+        end
+
         begin
           installer.install_path(info[:path], as: id, force: true)
-          Activator.new(@state).activate(id)
-          Reporter.ok "Imported and activated plugin #{Reporter.name(id)}"
+          # Mark active in profile state; linking deferred to finalize_setup
+          entry = @state.ensure_profile_plugin!(id)
+          (entry["components"] || {}).each do |s, items|
+            if s == "agentsMd"
+              items["active"] = true if items.is_a?(Hash)
+            elsif items.is_a?(Hash)
+              items.each_value { |cinfo| cinfo["active"] = true if cinfo.is_a?(Hash) }
+            end
+          end
+          Reporter.ok "Imported plugin #{Reporter.name(id)}"
+          imported_count += 1
         rescue StandardError => e
           Reporter.err "Failed to import plugin from #{info[:path]}: #{e.message}"
         end
       end
+
+      Reporter.ok "Plugin import complete: #{imported_count} imported, #{skipped_count} skipped/deduped."
     end
 
     def finalize_setup
-      Paths.ensure_skeleton!
+      clean_section_directories!
       if @state.plugins.any? || @state.user_content["agentsMd"] || @state.user_content["mcpJson"]
         Activator.new(@state).apply_profile!
       end
       @state.save
+    end
+
+    def restore(backup_path: nil, non_interactive: false, auto_yes: false)
+      Reporter.info "=== Tallmadge Management Removal & Restore ==="
+
+      backups = Dir.glob(File.join(Paths.backups_dir, "*-agents-backup")).sort
+      target_backup = backup_path || backups.last
+
+      if target_backup.nil? || !Dir.exist?(target_backup)
+        raise Error, "No ~/.agents backup found in #{Paths.backups_dir} to restore from."
+      end
+
+      Reporter.info "Target backup to restore: #{target_backup}"
+      prompt = "This will remove all Tallmadge symlinks, unmanage ~/.agents, and restore #{target_backup}. Proceed?"
+      should_proceed = auto_yes || (non_interactive ? true : prompt_yes_no(prompt, default: true))
+      return unless should_proceed
+
+      # 1. Teardown active profile symlinks and bridge links
+      Activator.new(@state).teardown_profile!
+
+      # 2. Clear current ~/.agents directory
+      FileUtils.rm_rf(Paths.agents_home)
+
+      # 3. Restore backup to ~/.agents
+      FileUtils.cp_r(target_backup, Paths.agents_home)
+      Reporter.ok "Restored ~/.agents from #{target_backup}"
+
+      # 4. Remove managed state for userContent and composed files
+      @state.user_content["agentsMd"] = nil
+      @state.user_content["mcpJson"] = nil
+      @state.composed["agentsMd"] = false
+      @state.composed["mcpJson"] = false
+      @state.mcp_origins.clear
+      @state.save
+
+      Reporter.ok "Tallmadge management removed and ~/.agents restored successfully."
     end
 
     # --- Helper methods ---

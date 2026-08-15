@@ -50,6 +50,15 @@ module Tallmadge
       Onboarder.new(state).run(non_interactive: options[:non_interactive], auto_yes: options[:yes])
     end
 
+    desc "restore", "Remove Tallmadge management and restore backed-up ~/.agents directory"
+    option :from, desc: "Specific backup directory path to restore from"
+    option :yes, aliases: "-y", type: :boolean, desc: "Automatically accept prompts"
+    option :non_interactive, type: :boolean, desc: "Run non-interactively"
+    def restore
+      state = State.load
+      Onboarder.new(state).restore(backup_path: options[:from], non_interactive: options[:non_interactive], auto_yes: options[:yes])
+    end
+
     desc "init", "Create the ~/.tallmadge and ~/.agents directory skeleton"
     option :onboard, type: :boolean, desc: "Run onboarding during initialization"
     option :yes, aliases: "-y", type: :boolean, desc: "Automatically accept all prompts during onboarding"
