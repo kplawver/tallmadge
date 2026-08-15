@@ -11,9 +11,9 @@ require "uri"
 require "time"
 require "set"
 
-module Tallmadge
-  VERSION = "0.1.1"
+require_relative "tallmadge/version"
 
+module Tallmadge
   # Every user-facing failure raises this; the CLI rescues it, prints via
   # Reporter, and exits 1.
   class Error < StandardError; end
