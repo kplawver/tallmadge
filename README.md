@@ -38,12 +38,15 @@ bundle install
 
 You can link `bin/clpr` to your `$PATH` or run `./bin/clpr`.
 
-Initialize the directory skeleton:
+Run onboarding and setup:
 
 ```bash
-clpr init
+clpr setup
+# or initialize with onboarding
+clpr init --onboard
 ```
 
+This safely checks if you already have an existing `~/.agents` directory, creates a timestamped backup in `~/.tallmadge/backups/`, imports your custom components, scans and imports external MCP server configurations (from Claude, Cursor, Cline/Roo, Oh My Pi), and imports plugins from other harnesses.
 ---
 
 ## Command Reference

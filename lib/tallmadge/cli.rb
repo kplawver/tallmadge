@@ -42,8 +42,23 @@ module Tallmadge
       puts "clpr #{Tallmadge::VERSION}"
     end
 
+    desc "setup", "Run setup and onboarding (backup existing .agents, import MCP configs and plugins)"
+    option :yes, aliases: "-y", type: :boolean, desc: "Automatically accept all prompts"
+    option :non_interactive, type: :boolean, desc: "Run non-interactively"
+    def setup
+      state = State.load
+      Onboarder.new(state).run(non_interactive: options[:non_interactive], auto_yes: options[:yes])
+    end
+
     desc "init", "Create the ~/.tallmadge and ~/.agents directory skeleton"
+    option :onboard, type: :boolean, desc: "Run onboarding during initialization"
+    option :yes, aliases: "-y", type: :boolean, desc: "Automatically accept all prompts during onboarding"
     def init
+      if options[:onboard]
+        setup
+        return
+      end
+
       created = Paths.ensure_skeleton!
       if created.empty?
         Reporter.ok "skeleton already present (#{Paths.tallmadge_home}, #{Paths.agents_home})"
