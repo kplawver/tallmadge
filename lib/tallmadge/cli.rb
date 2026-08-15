@@ -18,6 +18,9 @@ module Tallmadge
     desc "skill SUBCOMMAND", "Activate or deactivate a single skill by name"
     subcommand "skill", SkillCLI
 
+    desc "profile SUBCOMMAND", "Manage profiles (switchable plugin/marketplace/content sets)"
+    subcommand "profile", ProfileCLI
+
     def self.exit_on_failure?
       true
     end
@@ -97,17 +100,20 @@ module Tallmadge
       end
 
       state.plugins.each do |id, entry|
+        prof_entry = state.profile_plugins[id]
         puts "#{Reporter.name(id)}  #{Reporter.dim(source_summary(entry['source']))}"
         puts "  installed #{entry['installedAt']}  updated #{entry['updatedAt']}"
         (entry["components"] || {}).each do |section, items|
           next if items.nil? || items.empty?
 
           if section == "agentsMd"
-            puts "  #{Reporter.active_marker(items['active'])} agents.md"
+            active = prof_entry&.dig("components", "agentsMd", "active") ? true : false
+            puts "  #{Reporter.active_marker(active)} agents.md"
             next
           end
-          items.each do |comp_name, info|
-            puts "  #{Reporter.active_marker(info['active'])} #{section}: #{comp_name}"
+          items.each_key do |comp_name|
+            active = prof_entry&.dig("components", section, comp_name, "active") ? true : false
+            puts "  #{Reporter.active_marker(active)} #{section}: #{comp_name}"
           end
         end
         puts
@@ -128,7 +134,10 @@ module Tallmadge
       Activator.new(state).deactivate(id)
       FileUtils.rm_rf(Paths.plugin_dir(id))
       state.plugins.delete(id)
-      state.mcp_origins.delete_if { |_, origin| origin == id }
+      state.profiles.each_value do |prof|
+        prof["plugins"].delete(id)
+        prof["mcpOrigins"].delete_if { |_, origin| origin == id }
+      end
       state.save
       Reporter.ok "uninstalled #{id}"
     end

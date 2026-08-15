@@ -86,17 +86,15 @@ class MarketplaceTest < Minitest::Test
     assert_match(/no marketplace.json/, err.message)
   end
 
-  def test_add_name_collision_rejected
+  def test_add_same_marketplace_includes_in_profile
     mp_dir = home("mp")
     write File.join(mp_dir, ".claude-plugin", "marketplace.json"), JSON.generate(
       "name" => "fixture", "owner" => { "name" => "t" },
       "plugins" => [{ "name" => "demo", "source" => "./" }]
     )
     capture_io { Tallmadge::Marketplace.add(state, mp_dir) }
-    err = assert_raises(Tallmadge::Error) do
-      capture_io { Tallmadge::Marketplace.add(state, mp_dir) }
-    end
-    assert_match(/already added/, err.message)
+    out, = capture_io { Tallmadge::Marketplace.add(state, mp_dir) }
+    assert_match(/already added; included in profile default/, out)
   end
 
   def test_install_unknown_plugin_at_marketplace
