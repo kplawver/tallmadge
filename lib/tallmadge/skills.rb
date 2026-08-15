@@ -33,8 +33,9 @@ module Tallmadge
     def all_rows(state)
       rows = []
       state.plugins.each do |id, entry|
-        (entry.dig("components", "skills") || {}).each do |name, info|
-          rows << [name, id, info["active"]]
+        (entry.dig("components", "skills") || {}).each_key do |name|
+          active = state.profile_plugins.dig(id, "components", "skills", name, "active") ? true : false
+          rows << [name, id, active]
         end
       end
       rows.sort_by { |row| [row[0], row[1]] }

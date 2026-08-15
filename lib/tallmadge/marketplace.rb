@@ -40,7 +40,12 @@ module Tallmadge
         catalog = read_catalog!(clone_dir, source_desc)
         validate_catalog!(catalog, source_desc)
         name = catalog["name"]
-        ensure_no_collision!(state, name)
+        if state.marketplaces.key?(name)
+          state.profile_marketplaces << name unless state.profile_marketplaces.include?(name)
+          state.save
+          Reporter.ok "marketplace #{Reporter.name(name)} already added; included in profile #{state.active_profile_name}"
+          return
+        end
 
         FileUtils.mv(clone_dir, Paths.marketplace_dir(name))
         state.marketplaces[name] = {
@@ -49,6 +54,7 @@ module Tallmadge
           "sha" => Git.head_sha(Paths.marketplace_dir(name)),
           "updatedAt" => Time.now.utc.iso8601
         }
+        state.profile_marketplaces << name unless state.profile_marketplaces.include?(name)
         state.save
         Reporter.ok "added marketplace #{Reporter.name(name)} " \
                     "(#{valid_entries(catalog).size} plugins, #{state.marketplaces[name]['sha'][0, 7]})"
@@ -61,7 +67,12 @@ module Tallmadge
       catalog = read_catalog!(dir, dir)
       validate_catalog!(catalog, dir)
       name = catalog["name"]
-      ensure_no_collision!(state, name)
+      if state.marketplaces.key?(name)
+        state.profile_marketplaces << name unless state.profile_marketplaces.include?(name)
+        state.save
+        Reporter.ok "marketplace #{Reporter.name(name)} already added; included in profile #{state.active_profile_name}"
+        return
+      end
 
       state.marketplaces[name] = {
         "source" => { "type" => "path", "path" => dir },
@@ -69,6 +80,7 @@ module Tallmadge
         "sha" => nil,
         "updatedAt" => Time.now.utc.iso8601
       }
+      state.profile_marketplaces << name unless state.profile_marketplaces.include?(name)
       state.save
       Reporter.ok "added marketplace #{Reporter.name(name)} (path #{dir}, " \
                   "#{valid_entries(catalog).size} plugins)"
@@ -79,7 +91,12 @@ module Tallmadge
       catalog = parse_json!(body, url)
       validate_catalog!(catalog, url)
       name = catalog["name"]
-      ensure_no_collision!(state, name)
+      if state.marketplaces.key?(name)
+        state.profile_marketplaces << name unless state.profile_marketplaces.include?(name)
+        state.save
+        Reporter.ok "marketplace #{Reporter.name(name)} already added; included in profile #{state.active_profile_name}"
+        return
+      end
 
       dir = Paths.marketplace_dir(name)
       FileUtils.mkdir_p(dir)
@@ -90,6 +107,7 @@ module Tallmadge
         "sha" => nil,
         "updatedAt" => Time.now.utc.iso8601
       }
+      state.profile_marketplaces << name unless state.profile_marketplaces.include?(name)
       state.save
       Reporter.ok "added marketplace #{Reporter.name(name)} (url, #{valid_entries(catalog).size} plugins)"
     end
@@ -169,21 +187,18 @@ module Tallmadge
       entry
     end
 
-    def ensure_no_collision!(state, name)
-      return unless state.marketplaces.key?(name)
-
-      raise Error, "marketplace '#{name}' is already added (remove it first)"
-    end
 
     # ---- list / update / remove -----------------------------------------------
 
     def list(state)
-      if state.marketplaces.empty?
+      names = state.profile_marketplaces.select { |n| state.marketplaces.key?(n) }
+      if names.empty?
         Reporter.info "no marketplaces added"
         return
       end
 
-      rows = state.marketplaces.map do |name, entry|
+      rows = names.map do |name|
+        entry = state.marketplaces[name]
         catalog = load_catalog(state, name)
         count = valid_entries(catalog).size.to_s
         [name, source_summary(entry["source"]), count,
@@ -259,21 +274,29 @@ module Tallmadge
 
     def remove(state, name)
       entry = marketplace_entry!(state, name)
-      dir = catalog_dir(state, name)
-      if entry["source"]["type"] != "path" && dir.start_with?(Paths.tallmadge_home)
-        FileUtils.rm_rf(dir)
+      state.profile_marketplaces.delete(name)
+      other_profiles_include = state.profiles.values.any? do |prof|
+        Array(prof["marketplaces"]).include?(name)
       end
-      state.marketplaces.delete(name)
-      state.save
 
-      orphaned = state.plugins.count do |_, plugin|
-        src = plugin["source"]
-        src["type"] == "marketplace" && src["marketplace"] == name
+      unless other_profiles_include
+        dir = catalog_dir(state, name)
+        if entry["source"]["type"] != "path" && dir.start_with?(Paths.tallmadge_home)
+          FileUtils.rm_rf(dir)
+        end
+        state.marketplaces.delete(name)
+
+        orphaned = state.plugins.count do |_, plugin|
+          src = plugin["source"]
+          src["type"] == "marketplace" && src["marketplace"] == name
+        end
+        if orphaned.positive?
+          Reporter.warn "#{orphaned} installed plugin(s) came from #{name}; they remain " \
+                        "installed but update checks for them are limited"
+        end
       end
-      if orphaned.positive?
-        Reporter.warn "#{orphaned} installed plugin(s) came from #{name}; they remain " \
-                      "installed but update checks for them are limited"
-      end
+
+      state.save
       Reporter.ok "removed marketplace #{name}"
     end
 
@@ -351,7 +374,9 @@ module Tallmadge
       q = query.to_s.downcase
       rows = []
 
-      state.marketplaces.each_key do |name|
+      state.profile_marketplaces.each do |name|
+        next unless state.marketplaces.key?(name)
+
         catalog = load_catalog(state, name)
         valid_entries(catalog).each do |entry|
           fields = [entry["name"], entry["description"], entry["category"], *Array(entry["tags"])]

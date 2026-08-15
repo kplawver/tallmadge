@@ -35,7 +35,7 @@ class ActivatorTest < Minitest::Test
     assert_equal File.realpath(store("demo", "skills", "hello")), File.realpath(skill_link)
     assert_equal File.realpath(store("demo", "agents", "greeter")), File.realpath(agent_link)
 
-    entry = state.plugins["demo"]
+    entry = state.profile_plugins["demo"]
     assert entry.dig("components", "skills", "hello", "active")
     assert entry.dig("components", "agentsMd", "active")
   end
@@ -79,7 +79,7 @@ class ActivatorTest < Minitest::Test
     assert_includes content, "Demo instructions."
     assert_includes content, "<!-- tallmadge:end demo -->"
     # adoption preserved the user fragment
-    assert_equal "USER CONTENT\n", File.read(store("user", "agents.md"))
+    assert_equal "USER CONTENT\n", File.read(File.join(Tallmadge::Paths.profile_dir("default"), "agents.md"))
     assert state.composed["agentsMd"]
   end
 
@@ -117,7 +117,7 @@ class ActivatorTest < Minitest::Test
     out, = deactivate("demo")
     assert File.directory?(target) # left in place
     assert_match(/not a tallmadge link/, out)
-    refute state.plugins["demo"].dig("components", "skills", "hello", "active")
+    refute state.profile_plugins["demo"].dig("components", "skills", "hello", "active")
   end
 
   def test_deactivate_recomposes_and_removes_composed_file
