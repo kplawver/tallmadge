@@ -1,8 +1,7 @@
 # frozen_string_literal: true
 
 require "yaml"
-
-module Handlr
+module Tallmadge
   # The .agents protocol frontmatter is simple `---` fenced `key: value`
   # lines, not full YAML. parse handles that shape and falls back to
   # YAML.safe_load for real YAML frontmatter (e.g. existing SKILL.md files).

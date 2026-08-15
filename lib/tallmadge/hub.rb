@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Handlr
+module Tallmadge
   # .agents Hub: catalog of downloadable .dotagents bundles (JSON).
   # Bundles are converted into a normal plugin tree in the store.
   module Hub
@@ -59,7 +59,7 @@ module Handlr
 
     def find_item!(bundle_id, record = nil)
       item = items(record).find { |i| i["id"] == bundle_id }
-      raise Error, "hub bundle '#{bundle_id}' not found (see: handlr hub list)" unless item
+      raise Error, "hub bundle '#{bundle_id}' not found (see: clpr hub list)" unless item
 
       item
     end
@@ -91,7 +91,7 @@ module Handlr
     end
 
     # Re-fetch catalog and diff against installed hub plugins (report only;
-    # apply via `handlr update --apply`).
+    # apply via `clpr update --apply`).
     def update(state)
       record = catalog(force: true)
       Reporter.ok "hub catalog refreshed (#{items(record).size} bundles)"
@@ -299,7 +299,7 @@ module Handlr
     end
   end
 
-  # Thor subcommand: handlr hub ...
+  # Thor subcommand: clpr hub ...
   class HubCLI < Thor
     class_option :no_color, type: :boolean, default: false
 

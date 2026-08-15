@@ -3,17 +3,17 @@
 require_relative "test_helper"
 
 class StoreTest < Minitest::Test
-  include HandlrTestHelpers
+  include TallmadgeTestHelpers
 
   def test_derive_id_sanitizes
-    assert_equal "demo", Handlr::Store.derive_id("https://github.com/owner/Demo.git")
-    assert_equal "demo", Handlr::Store.derive_id("/tmp/Demo/")
-    assert_equal "my-plugin", Handlr::Store.derive_id("~/My Plugin")
-    assert_equal "repo", Handlr::Store.derive_id("owner/Repo")
+    assert_equal "demo", Tallmadge::Store.derive_id("https://github.com/owner/Demo.git")
+    assert_equal "demo", Tallmadge::Store.derive_id("/tmp/Demo/")
+    assert_equal "my-plugin", Tallmadge::Store.derive_id("~/My Plugin")
+    assert_equal "repo", Tallmadge::Store.derive_id("owner/Repo")
   end
 
   def test_derive_id_requires_nonempty
-    assert_raises(Handlr::Error) { Handlr::Store.derive_id("///") }
+    assert_raises(Tallmadge::Error) { Tallmadge::Store.derive_id("///") }
   end
 
   def test_scan_full_tree
@@ -27,7 +27,7 @@ class StoreTest < Minitest::Test
     write File.join(dir, "mcp.json"), '{"mcpServers":{"srv":{"command":"x"}}}'
     write File.join(dir, "AGENTS.md"), "instructions"
 
-    components = Handlr::Store.scan_components(dir)
+    components = Tallmadge::Store.scan_components(dir)
     assert_equal %w[s1 s2], components["skills"].keys.sort
     assert_equal %w[a1 flat], components["agents"].keys.sort
     assert_equal %w[t1], components["tasks"].keys
@@ -40,7 +40,7 @@ class StoreTest < Minitest::Test
   def test_scan_root_skill_md_named_after_dir
     dir = home("fixture", "rooty")
     write File.join(dir, "SKILL.md"), skill_md(name: "rooty")
-    components = Handlr::Store.scan_components(dir)
+    components = Tallmadge::Store.scan_components(dir)
     assert_equal ["rooty"], components["skills"].keys
   end
 
@@ -48,7 +48,7 @@ class StoreTest < Minitest::Test
     dir = home("fixture", "mixed")
     write File.join(dir, "skills", "inner", "SKILL.md"), skill_md(name: "inner")
     write File.join(dir, "SKILL.md"), skill_md(name: "mixed")
-    components = Handlr::Store.scan_components(dir)
+    components = Tallmadge::Store.scan_components(dir)
     assert_equal ["inner"], components["skills"].keys
   end
 
@@ -58,7 +58,7 @@ class StoreTest < Minitest::Test
           '{"name":"Pretty Name","description":"Desc here"}'
     write File.join(dir, "skills", "s", "SKILL.md"), skill_md
 
-    scan = Handlr::Store.scan(dir)
+    scan = Tallmadge::Store.scan(dir)
     assert_equal "Pretty Name", scan["displayName"]
     assert_equal "Desc here", scan["description"]
   end
@@ -67,16 +67,16 @@ class StoreTest < Minitest::Test
     dir = home("fixture", "fallback")
     write File.join(dir, "skills", "s", "SKILL.md"), skill_md(description: "From skill")
 
-    scan = Handlr::Store.scan(dir)
+    scan = Tallmadge::Store.scan(dir)
     assert_equal "fallback", scan["displayName"]
     assert_equal "From skill", scan["description"]
   end
 
   def test_marketplace_catalog_path
     dir = home("fixture", "cat")
-    assert_nil Handlr::Store.marketplace_catalog_path(dir)
+    assert_nil Tallmadge::Store.marketplace_catalog_path(dir)
     write File.join(dir, ".claude-plugin", "marketplace.json"), "{}"
     assert_equal File.join(dir, ".claude-plugin", "marketplace.json"),
-                 Handlr::Store.marketplace_catalog_path(dir)
+                 Tallmadge::Store.marketplace_catalog_path(dir)
   end
 end

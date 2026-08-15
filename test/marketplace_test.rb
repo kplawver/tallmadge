@@ -3,10 +3,10 @@
 require_relative "test_helper"
 
 class MarketplaceTest < Minitest::Test
-  include HandlrTestHelpers
+  include TallmadgeTestHelpers
 
   def test_classify_sources
-    m = Handlr::Marketplace
+    m = Tallmadge::Marketplace
     assert_equal :github, m.classify("owner/repo")
     assert_equal :git, m.classify("https://example.com/x.git")
     assert_equal :git, m.classify("git@github.com:owner/repo.git")
@@ -17,22 +17,22 @@ class MarketplaceTest < Minitest::Test
   end
 
   def test_classify_rejects_unknown
-    assert_raises(Handlr::Error) { Handlr::Marketplace.classify("") }
+    assert_raises(Tallmadge::Error) { Tallmadge::Marketplace.classify("") }
   end
 
   def test_validate_catalog_failures
-    m = Handlr::Marketplace
-    assert_raises(Handlr::Error) do
+    m = Tallmadge::Marketplace
+    assert_raises(Tallmadge::Error) do
       m.validate_catalog!({ "name" => "Bad Name!", "owner" => { "name" => "x" },
                             "plugins" => [] }, "t")
     end
-    assert_raises(Handlr::Error) do
+    assert_raises(Tallmadge::Error) do
       m.validate_catalog!({ "name" => "ok", "plugins" => [] }, "t") # missing owner
     end
-    assert_raises(Handlr::Error) do
+    assert_raises(Tallmadge::Error) do
       m.validate_catalog!({ "name" => "ok", "owner" => { "name" => "x" } }, "t") # no plugins
     end
-    assert_raises(Handlr::Error) do
+    assert_raises(Tallmadge::Error) do
       m.validate_catalog!({ "name" => "x" * 65, "owner" => { "name" => "x" },
                             "plugins" => [] }, "t") # name too long
     end
@@ -48,7 +48,7 @@ class MarketplaceTest < Minitest::Test
         "garbage"
       ]
     }
-    out, = capture_io { @entries = Handlr::Marketplace.valid_entries(catalog) }
+    out, = capture_io { @entries = Tallmadge::Marketplace.valid_entries(catalog) }
     assert_equal ["good"], @entries.map { |e| e["name"] }
     assert_match(/skipping invalid/, out)
   end
@@ -64,12 +64,12 @@ class MarketplaceTest < Minitest::Test
     write File.join(mp_dir, "plugins", "demo", "skills", "hi", "SKILL.md"),
           skill_md(name: "hi")
 
-    capture_io { Handlr::Marketplace.add(state, mp_dir) }
+    capture_io { Tallmadge::Marketplace.add(state, mp_dir) }
     st = state
     assert st.marketplaces.key?("fixture")
     assert_equal "path", st.marketplaces["fixture"].dig("source", "type")
 
-    capture_io { Handlr::Installer.new(st).install("demo@fixture") }
+    capture_io { Tallmadge::Installer.new(st).install("demo@fixture") }
     entry = st.plugins["demo@fixture"]
     refute_nil entry
     assert_equal "2.0.0", entry.dig("source", "version")
@@ -80,8 +80,8 @@ class MarketplaceTest < Minitest::Test
   def test_add_requires_catalog
     bare = home("bare")
     write File.join(bare, "README.md"), "no catalog here"
-    err = assert_raises(Handlr::Error) do
-      capture_io { Handlr::Marketplace.add(state, bare) }
+    err = assert_raises(Tallmadge::Error) do
+      capture_io { Tallmadge::Marketplace.add(state, bare) }
     end
     assert_match(/no marketplace.json/, err.message)
   end
@@ -92,9 +92,9 @@ class MarketplaceTest < Minitest::Test
       "name" => "fixture", "owner" => { "name" => "t" },
       "plugins" => [{ "name" => "demo", "source" => "./" }]
     )
-    capture_io { Handlr::Marketplace.add(state, mp_dir) }
-    err = assert_raises(Handlr::Error) do
-      capture_io { Handlr::Marketplace.add(state, mp_dir) }
+    capture_io { Tallmadge::Marketplace.add(state, mp_dir) }
+    err = assert_raises(Tallmadge::Error) do
+      capture_io { Tallmadge::Marketplace.add(state, mp_dir) }
     end
     assert_match(/already added/, err.message)
   end
@@ -105,9 +105,9 @@ class MarketplaceTest < Minitest::Test
       "name" => "fixture", "owner" => { "name" => "t" },
       "plugins" => [{ "name" => "demo", "source" => "./" }]
     )
-    capture_io { Handlr::Marketplace.add(state, mp_dir) }
-    err = assert_raises(Handlr::Error) do
-      capture_io { Handlr::Installer.new(state).install("missing@fixture") }
+    capture_io { Tallmadge::Marketplace.add(state, mp_dir) }
+    err = assert_raises(Tallmadge::Error) do
+      capture_io { Tallmadge::Installer.new(state).install("missing@fixture") }
     end
     assert_match(/not found/, err.message)
   end
@@ -119,10 +119,10 @@ class MarketplaceTest < Minitest::Test
       "plugins" => [{ "name" => "demo", "source" => "./" }]
     )
     write File.join(mp_dir, "skills", "s", "SKILL.md"), skill_md
-    capture_io { Handlr::Marketplace.add(state, mp_dir) }
-    capture_io { Handlr::Installer.new(state).install("demo@fixture") }
+    capture_io { Tallmadge::Marketplace.add(state, mp_dir) }
+    capture_io { Tallmadge::Installer.new(state).install("demo@fixture") }
 
-    capture_io { Handlr::Marketplace.remove(state, "fixture") }
+    capture_io { Tallmadge::Marketplace.remove(state, "fixture") }
     st = state
     refute st.marketplaces.key?("fixture")
     assert st.plugins.key?("demo@fixture") # plugin survives

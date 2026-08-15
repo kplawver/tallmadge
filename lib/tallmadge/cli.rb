@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-module Handlr
+module Tallmadge
   class CLI < Thor
-    package_name "handlr"
+    package_name "clpr"
 
     class_option :no_color, type: :boolean, default: false,
                             desc: "Disable colored output"
@@ -22,28 +22,28 @@ module Handlr
       true
     end
 
-    # Central error wiring: Handlr::Error -> red message + exit 1.
+    # Central error wiring: Tallmadge::Error -> red message + exit 1.
     # Color is disabled before Thor parses, so early failures honor it too.
     def self.start(given_args = ARGV, config = {})
       args = Array(given_args)
       Rainbow.enabled = false if ENV["NO_COLOR"] || args.include?("--no-color")
       super
-    rescue Handlr::Error => e
+    rescue Tallmadge::Error => e
       Reporter.err(e.message)
       exit(1)
     end
 
-    desc "version", "Print the handlr version"
+    desc "version", "Print the clpr version"
     map %w[--version -v] => :version
     def version
-      puts "handlr #{Handlr::VERSION}"
+      puts "clpr #{Tallmadge::VERSION}"
     end
 
-    desc "init", "Create the ~/.handlr and ~/.agents directory skeleton"
+    desc "init", "Create the ~/.tallmadge and ~/.agents directory skeleton"
     def init
       created = Paths.ensure_skeleton!
       if created.empty?
-        Reporter.ok "skeleton already present (#{Paths.handlr_home}, #{Paths.agents_home})"
+        Reporter.ok "skeleton already present (#{Paths.tallmadge_home}, #{Paths.agents_home})"
       else
         created.each { |dir| Reporter.ok "created #{dir}" }
       end
@@ -156,12 +156,12 @@ module Handlr
       Reporter.table(table_rows, %w[skill plugin active])
     end
 
-    desc "unlink HARNESS", "Remove every handlr bridge link for a harness"
+    desc "unlink HARNESS", "Remove every bridge link for a harness"
     def unlink(harness)
       Harness.unlink(State.load, harness)
     end
 
-    desc "doctor", "Check handlr state, links, and unmanaged content"
+    desc "doctor", "Check tallmadge state, links, and unmanaged content"
     def doctor
       errors = Harness.doctor(State.load)
       exit(errors.positive? ? 1 : 0)

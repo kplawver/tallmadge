@@ -1,12 +1,12 @@
 # frozen_string_literal: true
 
-module Handlr
+module Tallmadge
   # Harness gap-bridging. Native .agents support (verified):
   #   omp: reads ~/.agents/AGENTS.md and ~/.agents/skills; subagents load
   #        from FLAT files ~/.omp/agent/agents/<name>.md; no tasks/memories/mcp.
   #   pi:  reads ~/.agents/skills globally; global context from
   #        ~/.pi/agent/AGENTS.md; no markdown subagent slot; no mcp.json.
-  # handlr link only fills those gaps.
+  # clpr link only fills those gaps.
   module Harness
     ADAPTERS = {
       "omp" => { "home" => ".omp" },
@@ -97,7 +97,7 @@ module Handlr
       ensure_known!(harness_id)
       entry = state.harnesses[harness_id]
       unless entry
-        raise Error, "harness #{harness_id} is not linked by handlr"
+        raise Error, "harness #{harness_id} is not linked by tallmadge"
       end
 
       (entry["links"] || {}).each { |target, source| remove_recorded(target, source, true) }
@@ -169,7 +169,7 @@ module Handlr
         File.delete(target)
         Reporter.ok "removed #{target}" if report
       elsif File.exist?(target) || File.symlink?(target)
-        Reporter.warn "#{target} changed since handlr linked it; left in place" if report
+        Reporter.warn "#{target} changed since tallmadge linked it; left in place" if report
       end
     end
 
@@ -205,7 +205,7 @@ module Handlr
           if Dir.exist?(Paths.plugin_dir(id))
             Reporter.ok "plugin #{id}: store present"
           else
-            Reporter.err "plugin #{id}: store dir missing — fix with: handlr uninstall #{id}"
+            Reporter.err "plugin #{id}: store dir missing — fix with: clpr uninstall #{id}"
             errors += 1
           end
         end
@@ -244,7 +244,7 @@ module Handlr
           if known.include?(path)
             Reporter.ok "#{path}: managed link"
           else
-            Reporter.warn "#{path}: points into the handlr store but is not in state (orphan)"
+            Reporter.warn "#{path}: points into the tallmadge store but is not in state (orphan)"
           end
         end
       end
@@ -281,34 +281,34 @@ module Handlr
         if Paths::SECTIONS.include?(entry_name)
           Dir.children(path).sort.each do |child|
             child_path = File.join(path, child)
-            next if handlr_link?(child_path, store_base)
+            next if tallmadge_link?(child_path, store_base)
 
-            Reporter.info "#{child_path}: not managed by handlr"
+            Reporter.info "#{child_path}: not managed by tallmadge"
             found = true
           end
         elsif entry_name.casecmp?("agents.md") || entry_name.casecmp?("mcp.json")
-          if composed_by_handlr?(state, path, entry_name)
-            Reporter.ok "#{path}: composed by handlr"
+          if composed_by_tallmadge?(state, path, entry_name)
+            Reporter.ok "#{path}: composed by tallmadge"
           else
-            Reporter.info "#{path}: not managed by handlr"
+            Reporter.info "#{path}: not managed by tallmadge"
             found = true
           end
         else
-          Reporter.info "#{path}: not managed by handlr"
+          Reporter.info "#{path}: not managed by tallmadge"
           found = true
         end
       end
-      Reporter.info "all content managed by handlr" unless found
+      Reporter.info "all content managed by tallmadge" unless found
     end
 
-    def handlr_link?(path, store_base)
+    def tallmadge_link?(path, store_base)
       return false unless File.symlink?(path)
 
       real = File.realpath(path) rescue nil
       store_base && real && real.start_with?(store_base + File::SEPARATOR)
     end
 
-    def composed_by_handlr?(state, path, entry_name)
+    def composed_by_tallmadge?(state, path, entry_name)
       if entry_name.casecmp?("agents.md")
         first = File.open(path, &:readline).strip rescue ""
         first == Activator::AGENTS_MD_MARKER

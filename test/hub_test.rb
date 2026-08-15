@@ -3,7 +3,7 @@
 require_relative "test_helper"
 
 class HubTest < Minitest::Test
-  include HandlrTestHelpers
+  include TallmadgeTestHelpers
 
   BUNDLE = {
     "manifest" => {
@@ -33,7 +33,7 @@ class HubTest < Minitest::Test
   def test_write_bundle_tree_generates_protocol_files
     dir = store("test-bundle")
     FileUtils.mkdir_p(dir)
-    Handlr::Hub.write_bundle_tree(BUNDLE, dir)
+    Tallmadge::Hub.write_bundle_tree(BUNDLE, dir)
 
     agent = File.read(File.join(dir, "agents", "helper", "agent.md"))
     assert_match(/name: The Helper/, agent)
@@ -63,7 +63,7 @@ class HubTest < Minitest::Test
   end
 
   def test_mcp_servers_array_shape_normalized
-    servers = Handlr::Hub.normalize_mcp_servers([
+    servers = Tallmadge::Hub.normalize_mcp_servers([
       { "name" => "github", "command" => "npx", "args" => ["-y", "x"] },
       { "id" => "fs", "command" => "fs-mcp" }
     ])
@@ -74,7 +74,7 @@ class HubTest < Minitest::Test
   end
 
   def test_mcp_servers_map_shape_passthrough
-    servers = Handlr::Hub.normalize_mcp_servers({ "a" => { "command" => "x" } })
+    servers = Tallmadge::Hub.normalize_mcp_servers({ "a" => { "command" => "x" } })
     assert_equal({ "a" => { "command" => "x" } }, servers)
   end
 
@@ -83,7 +83,7 @@ class HubTest < Minitest::Test
       { "name" => "github", "command" => "npx", "args" => ["-y", "srv"] }
     ])
     dir = store("mcpbundle")
-    Handlr::Hub.write_bundle_tree(bundle, dir)
+    Tallmadge::Hub.write_bundle_tree(bundle, dir)
     mcp = JSON.parse(File.read(File.join(dir, "mcp.json")))
     assert_equal "npx", mcp.dig("mcpServers", "github", "command")
   end
@@ -93,7 +93,7 @@ class HubTest < Minitest::Test
       { "id" => "raw", "instructions" => "---\nname: raw\n---\nRaw body" }
     ])
     dir = store("rawbundle")
-    Handlr::Hub.write_bundle_tree(bundle, dir)
+    Tallmadge::Hub.write_bundle_tree(bundle, dir)
     content = File.read(File.join(dir, "skills", "raw", "SKILL.md"))
     assert content.start_with?("---\nname: raw\n---")
     assert_includes content, "Raw body"
@@ -106,7 +106,7 @@ class HubTest < Minitest::Test
       "plain string memory"
     ])
     dir = store("membundle")
-    Handlr::Hub.write_bundle_tree(bundle, dir)
+    Tallmadge::Hub.write_bundle_tree(bundle, dir)
 
     pref = File.read(File.join(dir, "memories", "pref.md"))
     assert_match(/title: Prefs/, pref)
@@ -121,8 +121,8 @@ class HubTest < Minitest::Test
 
   def test_generated_tree_is_scannable
     dir = store("scanbundle")
-    Handlr::Hub.write_bundle_tree(BUNDLE, dir)
-    components = Handlr::Store.scan_components(dir)
+    Tallmadge::Hub.write_bundle_tree(BUNDLE, dir)
+    components = Tallmadge::Store.scan_components(dir)
     assert_equal ["sk1"], components["skills"].keys
     assert_equal ["helper"], components["agents"].keys
     assert_equal ["morning"], components["tasks"].keys

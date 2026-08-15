@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-module Handlr
-  # Loads and saves ~/.handlr/state.json. Writes are atomic: write a
+module Tallmadge
+  # Loads and saves ~/.tallmadge/state.json. Writes are atomic: write a
   # pid-suffixed temp file next to the target, then File.rename.
   class State
     DEFAULT = {

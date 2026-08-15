@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Handlr
+module Tallmadge
   # Marketplace catalogs in the Claude/omp-compatible marketplace.json
   # format. Sources: owner/repo (github), git URL, local path, or a direct
   # URL to a marketplace.json.
@@ -34,7 +34,7 @@ module Handlr
     end
 
     def add_git(state, url, source_record, source_desc)
-      Dir.mktmpdir("handlr-marketplace") do |tmp|
+      Dir.mktmpdir("tallmadge-marketplace") do |tmp|
         clone_dir = File.join(tmp, "repo")
         Git.clone(url, clone_dir)
         catalog = read_catalog!(clone_dir, source_desc)
@@ -99,7 +99,7 @@ module Handlr
     def catalog_dir(state, name)
       entry = marketplace_entry!(state, name)
       path = entry["path"]
-      path.start_with?("/") ? path : File.join(Paths.handlr_home, path)
+      path.start_with?("/") ? path : File.join(Paths.tallmadge_home, path)
     end
 
     def load_catalog(state, name)
@@ -260,7 +260,7 @@ module Handlr
     def remove(state, name)
       entry = marketplace_entry!(state, name)
       dir = catalog_dir(state, name)
-      if entry["source"]["type"] != "path" && dir.start_with?(Paths.handlr_home)
+      if entry["source"]["type"] != "path" && dir.start_with?(Paths.tallmadge_home)
         FileUtils.rm_rf(dir)
       end
       state.marketplaces.delete(name)
@@ -365,7 +365,7 @@ module Handlr
         next
       end
 
-      if defined?(Handlr::Hub)
+      if defined?(Tallmadge::Hub)
         Array(Hub.cached_catalog_items).each do |item|
           fields = [item["id"], item["name"], item["summary"], *Array(item["tags"])]
           next unless matches?(q, fields)
@@ -393,7 +393,7 @@ module Handlr
     end
   end
 
-  # Thor subcommand: handlr marketplace ...
+  # Thor subcommand: clpr marketplace ...
   class MarketplaceCLI < Thor
     class_option :no_color, type: :boolean, default: false
 

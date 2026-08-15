@@ -1,12 +1,12 @@
 # frozen_string_literal: true
 
-module Handlr
+module Tallmadge
   # The activation engine. Activating a component symlinks its store copy
   # into the matching ~/.agents section; agents.md and mcp.json are composed
   # files, never symlinked. Every activate/deactivate recomposes both files
   # and lets Harness.maintain! refresh gap-bridging links.
   class Activator
-    AGENTS_MD_MARKER = "<!-- managed by handlr -->"
+    AGENTS_MD_MARKER = "<!-- managed by tallmadge -->"
     LINK_SECTIONS = %w[skills agents tasks memories].freeze
 
     attr_reader :state
@@ -81,7 +81,7 @@ module Handlr
       elsif File.symlink?(target) || File.exist?(target)
         unless force
           raise Error,
-                "#{target} already exists and is not a handlr link for #{id} " \
+                "#{target} already exists and is not a tallmadge link for #{id} " \
                 "(use --force to back it up and replace)"
         end
 
@@ -98,7 +98,7 @@ module Handlr
       plugin_dir = Paths.plugin_dir(id)
       if File.symlink?(target)
         unless own_link?(target, plugin_dir)
-          Reporter.warn "#{target} is not a handlr link for #{id}, left in place"
+          Reporter.warn "#{target} is not a tallmadge link for #{id}, left in place"
           return false
         end
 
@@ -107,7 +107,7 @@ module Handlr
         Reporter.ok "unlinked #{target}"
         true
       elsif File.exist?(target)
-        Reporter.warn "#{target} is not a handlr link, left in place"
+        Reporter.warn "#{target} is not a tallmadge link, left in place"
         false
       else
         false
@@ -274,9 +274,9 @@ module Handlr
         lines << user_fragment.strip << ""
       end
       fragments.each do |plugin_id, content|
-        lines << "<!-- handlr:begin #{plugin_id} -->"
+        lines << "<!-- tallmadge:begin #{plugin_id} -->"
         lines << content.strip
-        lines << "<!-- handlr:end #{plugin_id} -->"
+        lines << "<!-- tallmadge:end #{plugin_id} -->"
         lines << ""
       end
 
@@ -368,7 +368,7 @@ module Handlr
       rel = @state.user_content[key]
       return nil unless rel
 
-      path = File.join(Paths.handlr_home, rel)
+      path = File.join(Paths.tallmadge_home, rel)
       File.exist?(path) ? File.read(path) : nil
     end
 
@@ -376,7 +376,7 @@ module Handlr
       rel = @state.user_content["mcpJson"]
       return {} unless rel
 
-      path = File.join(Paths.handlr_home, rel)
+      path = File.join(Paths.tallmadge_home, rel)
       return {} unless File.exist?(path)
 
       data = JSON.parse(File.read(path)) rescue {}
@@ -425,7 +425,7 @@ module Handlr
     end
 
     def maintain_harnesses
-      Harness.maintain!(@state) if defined?(Handlr::Harness)
+      Harness.maintain!(@state) if defined?(Tallmadge::Harness)
     end
   end
 end

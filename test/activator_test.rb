@@ -3,7 +3,7 @@
 require_relative "test_helper"
 
 class ActivatorTest < Minitest::Test
-  include HandlrTestHelpers
+  include TallmadgeTestHelpers
 
   def install_demo(id: "demo",
                    agents_md: "Demo instructions.",
@@ -13,15 +13,15 @@ class ActivatorTest < Minitest::Test
     write File.join(dir, "agents", "greeter", "agent.md"), "---\nname: greeter\n---\nGreet\n"
     write File.join(dir, "AGENTS.md"), agents_md if agents_md
     write File.join(dir, "mcp.json"), mcp if mcp
-    capture_io { Handlr::Installer.new(state).install_path(dir, as: id) }
+    capture_io { Tallmadge::Installer.new(state).install_path(dir, as: id) }
   end
 
   def activate(id, **opts)
-    capture_io { Handlr::Activator.new(state).activate(id, **opts) }
+    capture_io { Tallmadge::Activator.new(state).activate(id, **opts) }
   end
 
   def deactivate(id, **opts)
-    capture_io { Handlr::Activator.new(state).deactivate(id, **opts) }
+    capture_io { Tallmadge::Activator.new(state).deactivate(id, **opts) }
   end
 
   def test_activate_creates_correct_symlinks
@@ -46,9 +46,9 @@ class ActivatorTest < Minitest::Test
 
     dir2 = home("fixture", "other")
     write File.join(dir2, "skills", "hello", "SKILL.md"), skill_md
-    capture_io { Handlr::Installer.new(state).install_path(dir2, as: "other") }
+    capture_io { Tallmadge::Installer.new(state).install_path(dir2, as: "other") }
 
-    err = assert_raises(Handlr::Error) { activate("other") }
+    err = assert_raises(Tallmadge::Error) { activate("other") }
     assert_match(/already exists/, err.message)
   end
 
@@ -58,10 +58,10 @@ class ActivatorTest < Minitest::Test
 
     dir2 = home("fixture", "other")
     write File.join(dir2, "skills", "hello", "SKILL.md"), skill_md
-    capture_io { Handlr::Installer.new(state).install_path(dir2, as: "other") }
+    capture_io { Tallmadge::Installer.new(state).install_path(dir2, as: "other") }
 
     activate("other", force: true)
-    backups = Dir.children(home(".handlr", "backups")).select { |b| b.include?("skills-hello") }
+    backups = Dir.children(home(".tallmadge", "backups")).select { |b| b.include?("skills-hello") }
     refute_empty backups
     assert_equal File.realpath(store("other", "skills", "hello")),
                  File.realpath(agents("skills", "hello"))
@@ -73,11 +73,11 @@ class ActivatorTest < Minitest::Test
     activate("demo")
 
     content = File.read(agents("agents.md"))
-    assert content.start_with?(Handlr::Activator::AGENTS_MD_MARKER)
+    assert content.start_with?(Tallmadge::Activator::AGENTS_MD_MARKER)
     assert_includes content, "USER CONTENT"
-    assert_includes content, "<!-- handlr:begin demo -->"
+    assert_includes content, "<!-- tallmadge:begin demo -->"
     assert_includes content, "Demo instructions."
-    assert_includes content, "<!-- handlr:end demo -->"
+    assert_includes content, "<!-- tallmadge:end demo -->"
     # adoption preserved the user fragment
     assert_equal "USER CONTENT\n", File.read(store("user", "agents.md"))
     assert state.composed["agentsMd"]
@@ -96,7 +96,7 @@ class ActivatorTest < Minitest::Test
 
     dir2 = home("fixture", "dup")
     write File.join(dir2, "mcp.json"), '{"mcpServers":{"demo-srv":{"command":"other"}}}'
-    capture_io { Handlr::Installer.new(state).install_path(dir2, as: "dup") }
+    capture_io { Tallmadge::Installer.new(state).install_path(dir2, as: "dup") }
 
     out, = activate("dup")
     assert_match(/already provided/, out)
@@ -116,7 +116,7 @@ class ActivatorTest < Minitest::Test
 
     out, = deactivate("demo")
     assert File.directory?(target) # left in place
-    assert_match(/not a handlr link/, out)
+    assert_match(/not a tallmadge link/, out)
     refute state.plugins["demo"].dig("components", "skills", "hello", "active")
   end
 

@@ -5,18 +5,18 @@ require "fileutils"
 require "tmpdir"
 
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
-require "handlr"
+require "tallmadge"
 
-# Every test runs in a throwaway HOME so the real ~/.agents, ~/.handlr,
+# Every test runs in a throwaway HOME so the real ~/.agents, ~/.tallmadge,
 # ~/.omp, and ~/.pi are never touched.
-module HandlrTestHelpers
+module TallmadgeTestHelpers
   def setup
     super
     @original_home = ENV["HOME"]
-    @sandbox = Dir.mktmpdir("handlr-test")
+    @sandbox = Dir.mktmpdir("tallmadge-test")
     ENV["HOME"] = @sandbox
     Rainbow.enabled = false
-    Handlr::Paths.ensure_skeleton!
+    Tallmadge::Paths.ensure_skeleton!
   end
 
   def teardown
@@ -27,7 +27,7 @@ module HandlrTestHelpers
 
   # Fresh load from disk; call again after any operation that saves.
   def state
-    Handlr::State.load
+    Tallmadge::State.load
   end
 
   def home(*parts)
@@ -39,7 +39,7 @@ module HandlrTestHelpers
   end
 
   def store(*parts)
-    home(".handlr", "store", *parts)
+    home(".tallmadge", "store", *parts)
   end
 
   def write(path, content)

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Handlr
+module Tallmadge
   # Minimal HTTP GET with bounded redirect following.
   module Http
     module_function
@@ -15,7 +15,7 @@ module Handlr
         http.open_timeout = 15
         http.read_timeout = 60
         request = Net::HTTP::Get.new(uri.request_uri)
-        request["User-Agent"] = "handlr/#{VERSION}"
+        request["User-Agent"] = "tallmadge/#{VERSION}"
         response = http.request(request)
 
         case response

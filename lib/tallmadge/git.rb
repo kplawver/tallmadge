@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-module Handlr
-  # Thin wrapper around the git binary. Every failure raises Handlr::Error
+module Tallmadge
+  # Thin wrapper around the git binary. Every failure raises Tallmadge::Error
   # with the command and captured output.
   module Git
     module_function

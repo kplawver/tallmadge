@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Handlr
+module Tallmadge
   # Plugin-id derivation, component scanning, and store-copy helpers.
   module Store
     INACTIVE = { "active" => false }.freeze

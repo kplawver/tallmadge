@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Handlr
+module Tallmadge
   # Colored terminal output. Rainbow.enabled is switched off by the CLI when
   # NO_COLOR is set or --no-color is passed.
   module Reporter

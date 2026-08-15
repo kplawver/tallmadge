@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-module Handlr
-  # Update checking and applying. `handlr update` reports; `--apply`
+module Tallmadge
+  # Update checking and applying. `clpr update` reports; `--apply`
   # reinstalls in place, preserving active components whose names survive.
   module Updater
     MARKETPLACE_STALE_AFTER = 24 * 60 * 60

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-module Handlr
-  # `handlr install <spec>` dispatch. Spec forms:
+module Tallmadge
+  # `clpr install <spec>` dispatch. Spec forms:
   #   /abs/path, ./rel, ~/path            -> local dir copy
   #   https://....git, git@..., owner/repo-> git clone
   #   plugin@marketplace                  -> marketplace catalog entry (Step 4)
@@ -51,12 +51,12 @@ module Handlr
       prior = prepare_install(id, force)
       sha = nil
 
-      Dir.mktmpdir("handlr-install") do |tmp|
+      Dir.mktmpdir("tallmadge-install") do |tmp|
         clone_dir = File.join(tmp, "repo")
         Git.clone(url, clone_dir, ref: ref)
         sha = Git.head_sha(clone_dir)
         if Store.marketplace_catalog_path(clone_dir)
-          raise Error, "#{spec} is a marketplace, use: handlr marketplace add #{spec}"
+          raise Error, "#{spec} is a marketplace, use: clpr marketplace add #{spec}"
         end
 
         Store.copy_into(clone_dir, Paths.plugin_dir(id))
@@ -78,7 +78,7 @@ module Handlr
       id = as || "#{plugin_name}@#{marketplace_name}"
       prior = prepare_install(id, force)
       sha = nil
-      Dir.mktmpdir("handlr-marketplace-plugin") do |tmp|
+      Dir.mktmpdir("tallmadge-marketplace-plugin") do |tmp|
         source_dir, sha = Marketplace.materialize(@state, marketplace_name, entry, tmp)
         Store.copy_into(source_dir, Paths.plugin_dir(id))
       end

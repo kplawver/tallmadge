@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Handlr
+module Tallmadge
   # Skill-name resolution across installed plugins for the skill-level
   # commands.
   module Skills
@@ -25,7 +25,7 @@ module Handlr
         owners.first
       else
         raise Error, "skill '#{name}' exists in multiple plugins: #{owners.join(', ')}; " \
-                     "activate it via `handlr activate <plugin> --skill #{name}`"
+                     "activate it via `clpr activate <plugin> --skill #{name}`"
       end
     end
 
@@ -41,7 +41,7 @@ module Handlr
     end
   end
 
-  # Thor subcommand: handlr skill ...
+  # Thor subcommand: clpr skill ...
   class SkillCLI < Thor
     class_option :no_color, type: :boolean, default: false
 

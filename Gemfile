@@ -2,8 +2,7 @@
 
 source "https://rubygems.org"
 
-gem "rainbow", "~> 3.1"
-gem "thor", "~> 1.5"
+gemspec
 
 group :development do
   gem "minitest", "~> 5.0"
