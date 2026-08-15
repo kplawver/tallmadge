@@ -1,0 +1,5 @@
+/.bundle/
+/vendor/bundle/
+/tmp/
+*.gem
+.byebug_history
