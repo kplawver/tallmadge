@@ -198,6 +198,46 @@ module Tallmadge
         "updatedAt" => now,
         "components" => scan["components"]
       }
+
+      @state.profiles.each_value do |prof|
+        next unless prof["plugins"] && prof["plugins"][id]
+
+        old_components = prof["plugins"][id]["components"] || {}
+        new_components = {}
+        dropped = []
+
+        scan["components"].each do |section, items|
+          if section == "agentsMd"
+            old_item = old_components["agentsMd"]
+            new_components["agentsMd"] = old_item ? State.deep_dup(old_item) : { "active" => false }
+          else
+            new_components[section] = {}
+            items.each_key do |name|
+              old_item = old_components.dig(section, name)
+              new_components[section][name] = old_item ? State.deep_dup(old_item) : { "active" => false }
+            end
+          end
+        end
+
+        old_components.each do |section, items|
+          if section == "agentsMd"
+            dropped << "agents.md" unless scan["components"]["agentsMd"]
+          elsif items.is_a?(Hash)
+            items.each_key do |name|
+              dropped << "#{section}:#{name}" unless scan["components"].dig(section, name)
+            end
+          end
+        end
+
+        if dropped.any?
+          Reporter.warn "#{id}: removed components no longer present: #{dropped.join(', ')} (profile selections cleared)"
+        end
+
+        prof["plugins"][id]["components"] = new_components
+      end
+
+      @state.ensure_profile_plugin!(id)
+
       @state.save
       report_install(id, @state.plugins[id])
 

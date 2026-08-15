@@ -14,6 +14,8 @@ module Tallmadge
     def store_dir = File.join(tallmadge_home, "store")
     def backups_dir = File.join(tallmadge_home, "backups")
     def cache_dir = File.join(tallmadge_home, "cache")
+    def profiles_dir = File.join(tallmadge_home, "profiles")
+    def profile_dir(name) = File.join(profiles_dir, name)
     def agents_home = File.join(Dir.home, ".agents")
 
     def agents_section(name) = File.join(agents_home, name)
@@ -26,7 +28,7 @@ module Tallmadge
     # Idempotent; never touches existing files. Returns newly created dirs.
     def ensure_skeleton!
       created = []
-      dirs = [tallmadge_home, marketplaces_dir, store_dir, backups_dir, cache_dir,
+      dirs = [tallmadge_home, marketplaces_dir, store_dir, backups_dir, cache_dir, profiles_dir,
               *SECTIONS.map { |s| agents_section(s) }]
       dirs.each do |dir|
         created << dir unless Dir.exist?(dir)

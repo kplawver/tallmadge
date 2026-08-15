@@ -38,7 +38,7 @@ module Tallmadge
 
     def active_agents(state)
       names = []
-      state.plugins.each_value do |entry|
+      state.profile_plugins.each_value do |entry|
         agents = entry.dig("components", "agents") || {}
         agents.each { |name, info| names << name if info["active"] }
       end
@@ -104,6 +104,14 @@ module Tallmadge
       state.harnesses.delete(harness_id)
       state.save
       Reporter.ok "unlinked #{harness_id}"
+    end
+
+    def teardown_links!(state)
+      state.harnesses.each_value do |entry|
+        (entry["links"] || {}).each do |target, source|
+          File.delete(target) if matches?(target, source)
+        end
+      end
     end
 
     def ensure_known!(harness_id)

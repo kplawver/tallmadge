@@ -18,7 +18,8 @@ module Tallmadge
     # only: nil (all components) or an array of [section, name] pairs;
     # agentsMd is ["agentsMd", nil].
     def activate(id, only: nil, force: false)
-      entry = plugin_entry(id)
+      plugin_entry(id)
+      entry = @state.ensure_profile_plugin!(id)
       pairs = selection(entry, only)
       if pairs.empty?
         Reporter.warn "#{id}: nothing to activate"
@@ -46,10 +47,14 @@ module Tallmadge
     end
 
     def deactivate(id, only: nil)
-      entry = plugin_entry(id)
-      pairs = selection(entry, only)
-      removed = 0
+      plugin_entry(id)
+      entry = @state.profile_plugins[id]
+      if entry.nil? || !has_active_components?(entry)
+        Reporter.warn "#{id}: nothing active in profile '#{@state.active_profile_name}'"
+        return
+      end
 
+      pairs = selection(entry, only)
       pairs.each do |section, name|
         info = component_info(entry, section, name)
         next unless info && info["active"]
@@ -59,7 +64,7 @@ module Tallmadge
 
         source = component_source(id, section, name)
         target = component_target(section, name, source)
-        removed += 1 if unlink!(target, id, section, name)
+        unlink!(target, id, section, name)
       end
 
       @state.save
@@ -68,6 +73,38 @@ module Tallmadge
       @state.save
       maintain_harnesses
       Reporter.ok "deactivated #{Reporter.name(id)}"
+    end
+
+    def teardown_profile!
+      @state.profile_plugins.each_key { |id| unlink_active_components!(id) }
+      Harness.teardown_links!(@state) if defined?(Tallmadge::Harness)
+      remove_composed_files!
+      @state.save
+    end
+
+    def apply_profile!
+      @state.profile_plugins.each do |id, entry|
+        components = entry["components"] || {}
+        all_pairs(components).each do |section, name|
+          info = component_info(entry, section, name)
+          next unless info && info["active"]
+          next if section == "agentsMd" || section == "mcpServers"
+
+          source = component_source(id, section, name)
+          target = component_target(section, name, source)
+          begin
+            link!(source, target, id, section, name, false)
+          rescue Tallmadge::Error => e
+            Reporter.warn "skipping #{target}: #{e.message}"
+            info["active"] = false
+          end
+        end
+      end
+
+      compose_agents_md!
+      compose_mcp_json!
+      maintain_harnesses
+      @state.save
     end
 
     # ---- symlinks ----------------------------------------------------------
@@ -297,7 +334,7 @@ module Tallmadge
         origins[name] = "user"
       end
 
-      @state.plugins.each do |id, entry|
+      @state.profile_plugins.each do |id, entry|
         info = (entry["components"] || {})["mcpServers"]
         next if info.nil? || info.empty?
 
@@ -330,7 +367,7 @@ module Tallmadge
 
       write_atomic(target, JSON.pretty_generate({ "mcpServers" => servers }) + "\n")
       @state.composed["mcpJson"] = true
-      @state.data["mcpOrigins"] = origins
+      @state.set_mcp_origins(origins)
       Reporter.ok "composed #{target} (#{servers.size} server#{servers.size == 1 ? '' : 's'})"
     end
 
@@ -343,24 +380,26 @@ module Tallmadge
     def adopt_agents_md!(target)
       stamp = Time.now.utc.strftime("%Y%m%dT%H%M%SZ")
       backup = File.join(Paths.backups_dir, "#{stamp}-agentsMd-agents.md")
-      user_copy = File.join(Paths.user_store_dir, "agents.md")
+      profile_dir = Paths.profile_dir(@state.active_profile_name)
+      user_copy = File.join(profile_dir, "agents.md")
       FileUtils.mkdir_p(Paths.backups_dir)
-      FileUtils.mkdir_p(Paths.user_store_dir)
+      FileUtils.mkdir_p(profile_dir)
       FileUtils.cp(target, user_copy)
       FileUtils.mv(target, backup)
-      @state.user_content["agentsMd"] = "store/user/agents.md"
+      @state.user_content["agentsMd"] = "profiles/#{@state.active_profile_name}/agents.md"
       Reporter.warn "adopted existing #{target} (backup: #{backup}, user fragment: #{user_copy})"
     end
 
     def adopt_mcp_json!(target)
       stamp = Time.now.utc.strftime("%Y%m%dT%H%M%SZ")
       backup = File.join(Paths.backups_dir, "#{stamp}-mcpJson-mcp.json")
-      user_copy = File.join(Paths.user_store_dir, "mcp.json")
+      profile_dir = Paths.profile_dir(@state.active_profile_name)
+      user_copy = File.join(profile_dir, "mcp.json")
       FileUtils.mkdir_p(Paths.backups_dir)
-      FileUtils.mkdir_p(Paths.user_store_dir)
+      FileUtils.mkdir_p(profile_dir)
       FileUtils.cp(target, user_copy)
       FileUtils.mv(target, backup)
-      @state.user_content["mcpJson"] = "store/user/mcp.json"
+      @state.user_content["mcpJson"] = "profiles/#{@state.active_profile_name}/mcp.json"
       Reporter.warn "adopted existing #{target} (backup: #{backup}, user copy: #{user_copy})"
     end
 
@@ -386,7 +425,7 @@ module Tallmadge
 
     def active_agents_md_fragments
       fragments = []
-      @state.plugins.each do |id, entry|
+      @state.profile_plugins.each do |id, entry|
         info = (entry["components"] || {})["agentsMd"]
         next unless info && info["active"]
 
@@ -426,6 +465,73 @@ module Tallmadge
 
     def maintain_harnesses
       Harness.maintain!(@state) if defined?(Tallmadge::Harness)
+    end
+    def remove_composed_files!
+      agents_md_target = File.join(Paths.agents_home, "agents.md")
+      if @state.composed["agentsMd"] && File.exist?(agents_md_target) && agents_md_managed?(agents_md_target)
+        File.delete(agents_md_target)
+      end
+      @state.composed["agentsMd"] = false
+
+      mcp_target = File.join(Paths.agents_home, "mcp.json")
+      if @state.composed["mcpJson"] && File.exist?(mcp_target)
+        File.delete(mcp_target)
+      end
+      @state.composed["mcpJson"] = false
+      @state.mcp_origins.clear
+    end
+
+    def unlink_active_components!(id)
+      entry = @state.profile_plugins[id]
+      return 0 unless entry
+
+      components = entry["components"] || {}
+      count = 0
+      all_pairs(components).each do |section, name|
+        info = component_info(entry, section, name)
+        next unless info && info["active"]
+        next if section == "agentsMd" || section == "mcpServers"
+
+        source = component_source(id, section, name)
+        target = component_target(section, name, source)
+        count += 1 if unlink!(target, id, section, name)
+      end
+      count
+    end
+
+    private
+
+    def has_active_components?(entry)
+      components = entry["components"] || {}
+      components.any? do |section, items|
+        if section == "agentsMd"
+          items.is_a?(Hash) && items["active"]
+        elsif items.is_a?(Hash)
+          items.values.any? { |info| info.is_a?(Hash) && info["active"] }
+        else
+          false
+        end
+      end
+    end
+
+    def deactivate_components!(id)
+      entry = @state.profile_plugins[id]
+      return 0 unless entry
+
+      components = entry["components"] || {}
+      count = 0
+      all_pairs(components).each do |section, name|
+        info = component_info(entry, section, name)
+        next unless info && info["active"]
+
+        mark_active(entry, section, name, false)
+        next if section == "agentsMd" || section == "mcpServers"
+
+        source = component_source(id, section, name)
+        target = component_target(section, name, source)
+        count += 1 if unlink!(target, id, section, name)
+      end
+      count
     end
   end
 end
