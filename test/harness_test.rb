@@ -100,6 +100,44 @@ class HarnessTest < Minitest::Test
     assert File.symlink?(link)
   end
 
+  def install_skill_plugin(id: "sp")
+    dir = home("fixture", id)
+    write File.join(dir, "skills", "sp-skill", "SKILL.md"),
+          skill_md(name: "sp-skill", description: "Skill plugin fixture")
+    capture_io { Tallmadge::Installer.new(state).install_path(dir, as: id) }
+    capture_io { Tallmadge::Activator.new(state).activate(id) }
+  end
+
+  def test_doctor_reports_activated_links_as_managed
+    setup_harness_homes
+    install_skill_plugin
+
+    out, = capture_io { Tallmadge::Harness.doctor(state) }
+    assert_match(/#{agents('skills', 'sp-skill')}: managed link/, out)
+    refute_match(/orphan/, out)
+  end
+
+  def test_doctor_flags_store_symlinks_missing_from_state_as_orphans
+    setup_harness_homes
+    install_skill_plugin
+    FileUtils.ln_s(store("sp", "skills", "sp-skill"), agents("skills", "ghost"))
+
+    out, = capture_io { Tallmadge::Harness.doctor(state) }
+    assert_match(/#{agents('skills', 'sp-skill')}: managed link/, out)
+    assert_match(/#{agents('skills', 'ghost')}: .* \(orphan\)/, out)
+  end
+
+  def test_doctor_ignores_ds_store_files
+    setup_harness_homes
+    write agents(".DS_Store"), "junk"
+    write agents("skills", ".DS_Store"), "junk"
+    write agents("skills", "real.md"), "genuinely unmanaged"
+
+    out, = capture_io { Tallmadge::Harness.doctor(state) }
+    refute_match(/DS_Store/, out)
+    assert_match(/#{agents('skills', 'real.md')}: not managed/, out)
+  end
+
   def test_link_requires_installed_harness
     err = assert_raises(Tallmadge::Error) do
       capture_io { Tallmadge::Harness.link(state, "omp") }

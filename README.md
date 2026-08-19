@@ -91,6 +91,15 @@ clpr restore --from ~/.tallmadge/backups/YYYYMMDDTHHMMSSZ-agents-backup
 - **`clpr uninstall <id>`**: Deactivate and permanently remove a plugin from the store.
 - **`clpr update [id]`**: Check installed plugins for upstream updates (use `--apply` to update).
 
+### User Content Files
+
+- **`clpr edit FILE`**: Open your user copy of a composed file (`agents.md` or `mcp.json`) in the OS default application for it; creates the file and registers it in the current profile if it doesn't exist.
+  ```bash
+  clpr edit agents.md   # create/open your instructions fragment
+  clpr edit mcp.json    # create/open your personal MCP servers
+  ```
+  Saved changes flow into the composed `~/.agents/agents.md` / `mcp.json` on the next rebuild (any `activate`, `deactivate`, or profile switch).
+
 ---
 
 ### Profile Management (`clpr profile`)

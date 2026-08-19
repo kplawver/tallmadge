@@ -5,6 +5,8 @@ module Tallmadge
   # overriding ENV["HOME"].
   module Paths
     SECTIONS = %w[skills agents tasks memories].freeze
+    # OS-generated junk, never treated as content anywhere in ~/.agents.
+    IGNORED_ENTRIES = [".DS_Store"].freeze
 
     module_function
 

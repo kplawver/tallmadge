@@ -166,6 +166,11 @@ module Tallmadge
       Reporter.ok "uninstalled #{id}"
     end
 
+    desc "edit FILE", "Open a user content file (agents.md, mcp.json) in your default app; creates it if missing"
+    def edit(file)
+      Editor.edit(State.load, file)
+    end
+
     desc "link [HARNESS]", "Bridge harness gaps (default: all detected harnesses)"
     option :force, type: :boolean, desc: "Back up and replace conflicting targets"
     def link(harness = nil)

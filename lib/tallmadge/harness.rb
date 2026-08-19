@@ -259,11 +259,12 @@ module Tallmadge
       errors
     end
 
+    # `active` lives on profile plugin entries, not the global plugin
+    # records, so resolve known targets from state.profile_plugins.
     def known_section_targets(state)
       activator = Activator.new(state)
       known = Set.new
-      state.plugins.each_key do |id|
-        entry = state.plugins[id]
+      state.profile_plugins.each do |id, entry|
         (entry["components"] || {}).each do |section, items|
           next unless Activator::LINK_SECTIONS.include?(section)
 
@@ -285,9 +286,13 @@ module Tallmadge
       found = false
 
       Dir.children(Paths.agents_home).sort.each do |entry_name|
+        next if Paths::IGNORED_ENTRIES.include?(entry_name)
+
         path = File.join(Paths.agents_home, entry_name)
         if Paths::SECTIONS.include?(entry_name)
           Dir.children(path).sort.each do |child|
+            next if Paths::IGNORED_ENTRIES.include?(child)
+
             child_path = File.join(path, child)
             next if tallmadge_link?(child_path, store_base)
 
