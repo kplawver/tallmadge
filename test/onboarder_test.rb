@@ -59,6 +59,42 @@ class OnboarderTest < Minitest::Test
     assert mcp_data["mcpServers"].key?("custom-mcp")
   end
 
+  def test_onboarding_groups_skill_families_and_symlink_sources_into_single_plugins
+    FileUtils.rm_rf(home(".agents"))
+
+    # Plain name-prefix family: root skill present + suffixed siblings
+    %w[caveman caveman-commit caveman-review].each do |name|
+      write home(".agents", "skills", name, "SKILL.md"), skill_md(name: name)
+    end
+
+    # Unrelated skill with no family stays standalone
+    write home(".agents", "skills", "standalone", "SKILL.md"), skill_md(name: "standalone")
+
+    # Symlinked skills sharing one real source directory
+    write home("src", "ponytail", "skills", "one", "SKILL.md"), skill_md(name: "one")
+    write home("src", "ponytail", "skills", "two", "SKILL.md"), skill_md(name: "two")
+    File.symlink(home("src", "ponytail", "skills", "one"), home(".agents", "skills", "one"))
+    File.symlink(home("src", "ponytail", "skills", "two"), home(".agents", "skills", "two"))
+
+    onboarder = Tallmadge::Onboarder.new(state)
+    out, = capture_io { onboarder.run(non_interactive: true, auto_yes: true) }
+
+    assert_match(/Imported skills: caveman \(3 components: caveman, caveman-commit, caveman-review\)/, out)
+    assert_match(/Imported skills: ponytail \(2 components: one, two\)/, out)
+    assert_match(/Imported skill: standalone/, out)
+    assert_match(/Migrated 3 standalone plugin\(s\)/, out)
+
+    s = state
+    assert_equal %w[caveman caveman-commit caveman-review], s.plugins["caveman"]["components"]["skills"].keys.sort
+    assert_equal 3, s.profile_plugins["caveman"]["components"]["skills"].values.count { |info| info["active"] }
+    assert_equal %w[one two], s.plugins["ponytail"]["components"]["skills"].keys.sort
+    assert s.plugins.key?("standalone")
+
+    %w[caveman caveman-commit caveman-review standalone one two].each do |name|
+      assert File.symlink?(home(".agents", "skills", name)), "#{name} should be relinked"
+    end
+  end
+
   def test_onboarding_skips_when_already_managed
     # Create managed state and links
     write store("plugin1", "skills", "s1", "SKILL.md"), skill_md(name: "s1")

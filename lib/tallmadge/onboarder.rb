@@ -364,74 +364,125 @@ module Tallmadge
     def import_components_from_backup(backup_dir)
       imported_count = 0
 
-      # Process individual items in skills, agents, tasks, memories as standalone plugins
+      # Components migrate as grouped plugins, not one plugin per entry:
+      # symlinked entries that share a source directory (realpath parent)
+      # become one plugin named for that source, and plain entries whose
+      # names share a "<root>-suffix" family (caveman, caveman-commit, ...)
+      # become one plugin named for the root. Family members stay
+      # individually toggleable via component-level activate/deactivate.
       Paths::SECTIONS.each do |sec|
         sec_dir = File.join(backup_dir, sec)
         next unless Dir.exist?(sec_dir)
 
-        Dir.children(sec_dir).reject { |c| c.start_with?(".") }.sort.each do |entry_name|
-          entry_path = File.join(sec_dir, entry_name)
-          # Derive plugin ID based on component name
-          base_name = if File.directory?(entry_path)
-                        entry_name
-                      else
-                        File.basename(entry_name, ".*")
-                      end
-
-          plugin_id = Store.derive_id(base_name)
-          if @state.plugins.key?(plugin_id)
-            plugin_id = Store.derive_id("#{base_name}-#{sec.chomp('s')}")
-          end
-
-          # Copy component into a discrete standalone plugin directory structure in store
-          dest = Paths.plugin_dir(plugin_id)
-          dest_sec = File.join(dest, sec, entry_name)
-          FileUtils.mkdir_p(File.dirname(dest_sec))
-
-          if File.directory?(entry_path)
-            FileUtils.cp_r(entry_path, dest_sec)
-          else
-            FileUtils.cp(entry_path, dest_sec)
-          end
-
-          # Write standalone plugin manifest
-          meta_dir = File.join(dest, ".omp-plugin")
-          FileUtils.mkdir_p(meta_dir)
-          File.write(
-            File.join(meta_dir, "plugin.json"),
-            JSON.pretty_generate({
-              "name" => base_name,
-              "description" => "#{sec.capitalize} component migrated from prior ~/.agents"
-            }) + "\n"
-          )
-
-          # Scan & register in State
-          scan_result = Store.scan(dest)
-          now = Time.now.utc.iso8601
-          @state.plugins[plugin_id] = {
-            "installedAt" => now,
-            "updatedAt" => now,
-            "source" => { "type" => "path", "path" => entry_path },
-            "components" => scan_result["components"]
-          }
-          entry = @state.ensure_profile_plugin!(plugin_id)
-
-          # Mark all components active in active profile
-          (entry["components"] || {}).each do |s, items|
-            if s == "agentsMd"
-              items["active"] = true if items.is_a?(Hash)
-            elsif items.is_a?(Hash)
-              items.each_value { |info| info["active"] = true if info.is_a?(Hash) }
-            end
-          end
-
-          singular_type = sec.chomp("s")
-          Reporter.ok "Imported #{singular_type}: #{Reporter.name(plugin_id)}"
-          imported_count += 1
+        entries = Dir.children(sec_dir).reject { |c| c.start_with?(".") }.sort
+        migration_groups(sec_dir, entries).each do |base, source_path, names|
+          imported_count += 1 if import_component_group(sec, sec_dir, base, source_path, names)
         end
       end
 
-      Reporter.ok "Migrated #{imported_count} standalone plugin(s) from prior ~/.agents into Tallmadge store" if imported_count.positive?
+      if imported_count.positive?
+        Reporter.ok "Migrated #{imported_count} standalone plugin(s) from prior ~/.agents into Tallmadge store"
+      end
+    end
+
+    # Returns [base_name, source_path, [entry_names]] groups per section.
+    # Symlinked entries group under their shared realpath parent (the real
+    # plugin checkout); plain entries group by name-prefix family, where a
+    # family root must itself be present in the same section.
+    def migration_groups(sec_dir, entries)
+      linked = {}
+      plain = []
+
+      entries.each do |name|
+        path = File.join(sec_dir, name)
+        real = File.symlink?(path) ? (File.realpath(path) rescue nil) : nil
+        if real
+          (linked[File.dirname(real)] ||= []) << name
+        else
+          plain << name
+        end
+      end
+
+      groups = linked.map do |parent, names|
+        base = names.size == 1 ? names.first : File.basename(File.dirname(parent))
+        [base, parent, names.sort]
+      end
+
+      base_of = {}
+      plain.each do |name|
+        base_of[name] = File.directory?(File.join(sec_dir, name)) ? name : File.basename(name, ".*")
+      end
+
+      families = {}
+      plain.each do |name|
+        base = base_of[name]
+        root = base_of.values.uniq
+                      .select { |other| other != base && base.start_with?(other + "-") }
+                      .min_by(&:length)
+        (families[root || base] ||= []) << name
+      end
+      families.each { |base, names| groups << [base, sec_dir, names.sort] }
+
+      groups.sort_by(&:first)
+    end
+
+    def import_component_group(sec, sec_dir, base, source_path, names)
+      plugin_id = Store.derive_id(base)
+      plugin_id = Store.derive_id("#{base}-#{sec.chomp('s')}") if @state.plugins.key?(plugin_id)
+
+      # Copy component entries into a discrete standalone plugin directory in the store
+      dest = Paths.plugin_dir(plugin_id)
+      names.each do |entry_name|
+        entry_path = File.join(sec_dir, entry_name)
+        dest_entry = File.join(dest, sec, entry_name)
+        FileUtils.mkdir_p(File.dirname(dest_entry))
+
+        if File.directory?(entry_path)
+          FileUtils.cp_r(entry_path, dest_entry)
+        else
+          FileUtils.cp(entry_path, dest_entry)
+        end
+      end
+
+      # Write standalone plugin manifest
+      meta_dir = File.join(dest, ".omp-plugin")
+      FileUtils.mkdir_p(meta_dir)
+      File.write(
+        File.join(meta_dir, "plugin.json"),
+        JSON.pretty_generate({
+          "name" => base,
+          "description" => "#{sec.capitalize} component#{names.size == 1 ? '' : 's'} migrated from prior ~/.agents"
+        }) + "\n"
+      )
+
+      # Scan & register in State
+      scan_result = Store.scan(dest)
+      now = Time.now.utc.iso8601
+      @state.plugins[plugin_id] = {
+        "installedAt" => now,
+        "updatedAt" => now,
+        "source" => { "type" => "path", "path" => source_path },
+        "components" => scan_result["components"]
+      }
+      entry = @state.ensure_profile_plugin!(plugin_id)
+      mark_components_active!(entry)
+
+      if names.size == 1
+        Reporter.ok "Imported #{sec.chomp('s')}: #{Reporter.name(plugin_id)}"
+      else
+        Reporter.ok "Imported #{sec}: #{Reporter.name(plugin_id)} (#{names.size} components: #{names.join(', ')})"
+      end
+      true
+    end
+
+    def mark_components_active!(entry)
+      (entry["components"] || {}).each do |s, items|
+        if s == "agentsMd"
+          items["active"] = true if items.is_a?(Hash)
+        elsif items.is_a?(Hash)
+          items.each_value { |info| info["active"] = true if info.is_a?(Hash) }
+        end
+      end
     end
 
     def handle_mcp_imports(mcp_findings, non_interactive: false, auto_yes: false)
@@ -598,13 +649,7 @@ module Tallmadge
           installer.install_path(info[:path], as: id, force: true)
           # Mark active in profile state; linking deferred to finalize_setup
           entry = @state.ensure_profile_plugin!(id)
-          (entry["components"] || {}).each do |s, items|
-            if s == "agentsMd"
-              items["active"] = true if items.is_a?(Hash)
-            elsif items.is_a?(Hash)
-              items.each_value { |cinfo| cinfo["active"] = true if cinfo.is_a?(Hash) }
-            end
-          end
+          mark_components_active!(entry)
           Reporter.ok "Imported plugin #{Reporter.name(id)}"
           imported_count += 1
         rescue StandardError => e

@@ -83,25 +83,29 @@ module Tallmadge
       Installer.new(State.load).install(spec, as: options[:as], force: options[:force])
     end
 
-    desc "activate ID", "Symlink a plugin's components into ~/.agents (and compose agents.md/mcp.json)"
+    desc "activate ID ...", "Symlink plugins' components into ~/.agents (and compose agents.md/mcp.json)"
     option :skill, desc: "Activate only this skill"
     option :agent, desc: "Activate only this agent"
     option :task, desc: "Activate only this task"
     option :memory, desc: "Activate only this memory file"
     option :force, type: :boolean, desc: "Back up and replace conflicting targets"
-    def activate(id)
+    def activate(*ids)
+      require_ids!(ids)
       state = State.load
       Paths.ensure_skeleton!
-      Activator.new(state).activate(id, only: component_filter, force: options[:force])
+      activator = Activator.new(state)
+      ids.each { |id| activator.activate(id, only: component_filter, force: options[:force]) }
     end
 
-    desc "deactivate ID", "Remove a plugin's links from ~/.agents (and recompose)"
+    desc "deactivate ID ...", "Remove plugins' links from ~/.agents (and recompose)"
     option :skill, desc: "Deactivate only this skill"
     option :agent, desc: "Deactivate only this agent"
     option :task, desc: "Deactivate only this task"
     option :memory, desc: "Deactivate only this memory file"
-    def deactivate(id)
-      Activator.new(State.load).deactivate(id, only: component_filter)
+    def deactivate(*ids)
+      require_ids!(ids)
+      activator = Activator.new(State.load)
+      ids.each { |id| activator.deactivate(id, only: component_filter) }
     end
 
     desc "search [QUERY]", "Search all marketplaces and the hub catalog"
@@ -144,26 +148,28 @@ module Tallmadge
       end
     end
 
-    desc "uninstall ID", "Uninstall a plugin (deactivates, then removes its store copy)"
-    def uninstall(id)
+    desc "uninstall ID ...", "Uninstall plugins (deactivates, then removes their store copies)"
+    def uninstall(*ids)
+      require_ids!(ids)
       state = State.load
-      entry = state.plugins[id]
-      unless entry
-        installed = state.plugins.keys
-        msg = "unknown plugin '#{id}'"
-        msg += " — installed: #{installed.join(', ')}" unless installed.empty?
-        raise Error, msg
-      end
+      ids.each do |id|
+        unless state.plugins[id]
+          installed = state.plugins.keys
+          msg = "unknown plugin '#{id}'"
+          msg += " — installed: #{installed.join(', ')}" unless installed.empty?
+          raise Error, msg
+        end
 
-      Activator.new(state).deactivate(id)
-      FileUtils.rm_rf(Paths.plugin_dir(id))
-      state.plugins.delete(id)
-      state.profiles.each_value do |prof|
-        prof["plugins"].delete(id)
-        prof["mcpOrigins"].delete_if { |_, origin| origin == id }
+        Activator.new(state).deactivate(id)
+        FileUtils.rm_rf(Paths.plugin_dir(id))
+        state.plugins.delete(id)
+        state.profiles.each_value do |prof|
+          prof["plugins"].delete(id)
+          prof["mcpOrigins"].delete_if { |_, origin| origin == id }
+        end
+        state.save
+        Reporter.ok "uninstalled #{id}"
       end
-      state.save
-      Reporter.ok "uninstalled #{id}"
     end
 
     desc "edit FILE", "Open a user content file (agents.md, mcp.json) in your default app; creates it if missing"
@@ -225,6 +231,15 @@ module Tallmadge
         pairs << ["tasks", options[:task]] if options[:task]
         pairs << ["memories", options[:memory]] if options[:memory]
         pairs.empty? ? nil : pairs
+      end
+
+      # UsageError < Thor::Error would be intercepted (and exited) inside
+      # Thor before CLI.start's rescue ever sees it; Tallmadge::Error is the
+      # only class that reaches our red-message + exit(1) wiring.
+      def require_ids!(ids)
+        raise Error, "no plugin id given" if ids.empty?
+
+        ids
       end
     end
   end
