@@ -55,7 +55,7 @@ clpr setup
 clpr init --onboard
 ```
 
-This safely checks if you already have an existing `~/.agents` directory, creates a timestamped backup in `~/.tallmadge/backups/`, imports custom components as standalone plugins, scans and imports external MCP server configurations (from Claude, Cursor, Cline/Roo, Oh My Pi) and marketplaces, with deduplication across all sources.
+This safely checks if you already have an existing `~/.agents` directory, creates a timestamped backup in `~/.tallmadge/backups/`, imports custom components as plugins — grouping skills that came from the same source (symlinked from one checkout) or that share a name family (`caveman`, `caveman-commit`, … → one `caveman` plugin) into a single plugin — scans and imports external MCP server configurations (from Claude, Cursor, Cline/Roo, Oh My Pi) and marketplaces, with deduplication across all sources.
 
 To remove Tallmadge management and restore your original `~/.agents` backup:
 
@@ -76,19 +76,21 @@ clpr restore --from ~/.tallmadge/backups/YYYYMMDDTHHMMSSZ-agents-backup
   clpr install https://github.com/user/agent-plugin.git
   clpr install user/agent-plugin --as my-alias
   ```
-- **`clpr activate <id>`**: Symlink a plugin's components into `~/.agents/` and compose `AGENTS.md` / `mcp.json`.
-  - Filter by component: `--skill <name>`, `--agent <name>`, `--task <name>`, `--memory <name>`.
+- **`clpr activate <id> ...`**: Symlink plugins' components into `~/.agents/` and compose `AGENTS.md` / `mcp.json`. Accepts multiple ids.
+  - Filter by component: `--skill <name>`, `--agent <name>`, `--task <name>`, `--memory <name>` (applies to every id given).
   - Force override conflicts: `--force`.
   ```bash
   clpr activate my-plugin
   clpr activate my-plugin --skill lint
+  clpr activate caveman caveman-hub ponytail
   ```
-- **`clpr deactivate <id>`**: Remove component symlinks and recompose files.
+- **`clpr deactivate <id> ...`**: Remove component symlinks and recompose files. Accepts multiple ids.
   ```bash
   clpr deactivate my-plugin
+  clpr deactivate caveman ponytail
   ```
 - **`clpr list`**: List installed plugins, installation metadata, and component activation status in the current profile.
-- **`clpr uninstall <id>`**: Deactivate and permanently remove a plugin from the store.
+- **`clpr uninstall <id> ...`**: Deactivate and permanently remove plugins from the store. Accepts multiple ids.
 - **`clpr update [id]`**: Check installed plugins for upstream updates (use `--apply` to update).
 
 ### User Content Files
