@@ -577,7 +577,7 @@ module Tallmadge
         end
 
         begin
-          Marketplace.add(@state, source)
+          Marketplace.add(@state, source, auto_install: false)
           imported_count += 1
         rescue StandardError => e
           Reporter.err "Failed to add marketplace from #{source}: #{e.message}"
