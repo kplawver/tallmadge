@@ -21,7 +21,7 @@ module Tallmadge
 
       case classify(spec)
       when :path then install_path(spec, as: as, force: force)
-      when :git then install_git(spec, as: as, force: force)
+      when :git, :github then install_git(spec, as: as, force: force)
       else install_bare(spec, as: as, force: force)
       end
     end

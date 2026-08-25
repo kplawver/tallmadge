@@ -37,7 +37,6 @@ module Tallmadge
         linked += 1
       end
 
-      @state.save
       compose_agents_md!
       compose_mcp_json!
       @state.save
@@ -67,7 +66,6 @@ module Tallmadge
         unlink!(target, id, section, name)
       end
 
-      @state.save
       compose_agents_md!
       compose_mcp_json!
       @state.save
@@ -377,30 +375,26 @@ module Tallmadge
       false
     end
 
-    def adopt_agents_md!(target)
+    def adopt_composed_file!(target, key, suffix)
       stamp = Time.now.utc.strftime("%Y%m%dT%H%M%SZ")
-      backup = File.join(Paths.backups_dir, "#{stamp}-agentsMd-agents.md")
+      backup = File.join(Paths.backups_dir, "#{stamp}-#{suffix}")
       profile_dir = Paths.profile_dir(@state.active_profile_name)
-      user_copy = File.join(profile_dir, "agents.md")
+      user_copy = File.join(profile_dir, key == "agentsMd" ? "agents.md" : "mcp.json")
       FileUtils.mkdir_p(Paths.backups_dir)
       FileUtils.mkdir_p(profile_dir)
       FileUtils.cp(target, user_copy)
       FileUtils.mv(target, backup)
-      @state.user_content["agentsMd"] = "profiles/#{@state.active_profile_name}/agents.md"
-      Reporter.warn "adopted existing #{target} (backup: #{backup}, user fragment: #{user_copy})"
+      @state.user_content[key] = "profiles/#{@state.active_profile_name}/#{File.basename(user_copy)}"
+      kind = key == "agentsMd" ? "user fragment" : "user copy"
+      Reporter.warn "adopted existing #{target} (backup: #{backup}, #{kind}: #{user_copy})"
+    end
+
+    def adopt_agents_md!(target)
+      adopt_composed_file!(target, "agentsMd", "agentsMd-agents.md")
     end
 
     def adopt_mcp_json!(target)
-      stamp = Time.now.utc.strftime("%Y%m%dT%H%M%SZ")
-      backup = File.join(Paths.backups_dir, "#{stamp}-mcpJson-mcp.json")
-      profile_dir = Paths.profile_dir(@state.active_profile_name)
-      user_copy = File.join(profile_dir, "mcp.json")
-      FileUtils.mkdir_p(Paths.backups_dir)
-      FileUtils.mkdir_p(profile_dir)
-      FileUtils.cp(target, user_copy)
-      FileUtils.mv(target, backup)
-      @state.user_content["mcpJson"] = "profiles/#{@state.active_profile_name}/mcp.json"
-      Reporter.warn "adopted existing #{target} (backup: #{backup}, user copy: #{user_copy})"
+      adopt_composed_file!(target, "mcpJson", "mcpJson-mcp.json")
     end
 
     def read_user_content(key)
@@ -512,26 +506,6 @@ module Tallmadge
           false
         end
       end
-    end
-
-    def deactivate_components!(id)
-      entry = @state.profile_plugins[id]
-      return 0 unless entry
-
-      components = entry["components"] || {}
-      count = 0
-      all_pairs(components).each do |section, name|
-        info = component_info(entry, section, name)
-        next unless info && info["active"]
-
-        mark_active(entry, section, name, false)
-        next if section == "agentsMd" || section == "mcpServers"
-
-        source = component_source(id, section, name)
-        target = component_target(section, name, source)
-        count += 1 if unlink!(target, id, section, name)
-      end
-      count
     end
   end
 end
