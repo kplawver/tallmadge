@@ -4,15 +4,16 @@ module Tallmadge
   # The activation engine. Activating a component symlinks its store copy
   # into the matching ~/.agents section; agents.md and mcp.json are composed
   # files, never symlinked. Every activate/deactivate recomposes both files
-  # and lets Harness.maintain! refresh gap-bridging links.
+  # (via Composer) and lets Harness.maintain! refresh gap-bridging links.
   class Activator
-    AGENTS_MD_MARKER = "<!-- managed by tallmadge -->"
+    AGENTS_MD_MARKER = Composer::AGENTS_MD_MARKER
     LINK_SECTIONS = %w[skills agents tasks memories].freeze
 
-    attr_reader :state
+    attr_reader :state, :composer
 
     def initialize(state)
       @state = state
+      @composer = Composer.new(state)
     end
 
     # only: nil (all components) or an array of [section, name] pairs;
@@ -37,7 +38,6 @@ module Tallmadge
         linked += 1
       end
 
-      @state.save
       compose_agents_md!
       compose_mcp_json!
       @state.save
@@ -67,7 +67,6 @@ module Tallmadge
         unlink!(target, id, section, name)
       end
 
-      @state.save
       compose_agents_md!
       compose_mcp_json!
       @state.save
@@ -103,8 +102,8 @@ module Tallmadge
 
       compose_agents_md!
       compose_mcp_json!
-      maintain_harnesses
       @state.save
+      maintain_harnesses
     end
 
     # ---- symlinks ----------------------------------------------------------
@@ -286,199 +285,22 @@ module Tallmadge
       end
     end
 
-    # ---- composers -----------------------------------------------------------
+    # ---- composers (delegated to Composer) ----------------------------------
 
     def compose_agents_md!
-      target = File.join(Paths.agents_home, "agents.md")
-      user_fragment = read_user_content("agentsMd")
-      fragments = active_agents_md_fragments
-
-      if user_fragment.nil? && fragments.empty?
-        if @state.composed["agentsMd"] && File.exist?(target) && agents_md_managed?(target)
-          File.delete(target)
-          Reporter.info "removed composed agents.md (no active content left)"
-        end
-        @state.composed["agentsMd"] = false
-        return
-      end
-
-      adopt_agents_md!(target) if File.exist?(target) && !agents_md_managed?(target)
-      # Adoption may have added a user fragment.
-      user_fragment ||= read_user_content("agentsMd")
-
-      lines = [AGENTS_MD_MARKER, ""]
-      if user_fragment && !user_fragment.strip.empty?
-        lines << user_fragment.strip << ""
-      end
-      fragments.each do |plugin_id, content|
-        lines << "<!-- tallmadge:begin #{plugin_id} -->"
-        lines << content.strip
-        lines << "<!-- tallmadge:end #{plugin_id} -->"
-        lines << ""
-      end
-
-      write_atomic(target, lines.join("\n").rstrip + "\n")
-      @state.composed["agentsMd"] = true
-      Reporter.ok "composed #{target} (#{fragments.size} plugin fragment#{fragments.size == 1 ? '' : 's'})"
+      @composer.compose_agents_md!
     end
 
     def compose_mcp_json!
-      target = File.join(Paths.agents_home, "mcp.json")
-      adopt_mcp_json!(target) if File.exist?(target) && !@state.composed["mcpJson"]
-
-      servers = {}
-      origins = {}
-
-      user_servers.each do |name, config|
-        servers[name] = config
-        origins[name] = "user"
-      end
-
-      @state.profile_plugins.each do |id, entry|
-        info = (entry["components"] || {})["mcpServers"]
-        next if info.nil? || info.empty?
-
-        plugin_servers = plugin_mcp_servers(id)
-        info.each_key do |server_name|
-          next unless info[server_name]["active"]
-
-          config = plugin_servers[server_name]
-          next unless config
-
-          if servers.key?(server_name)
-            Reporter.warn "mcp server '#{server_name}' already provided by " \
-                          "#{origins[server_name]}, keeping first"
-            next
-          end
-          servers[server_name] = config
-          origins[server_name] = id
-        end
-      end
-
-      if servers.empty?
-        if @state.composed["mcpJson"] && File.exist?(target)
-          File.delete(target)
-          Reporter.info "removed composed mcp.json (no active servers left)"
-        end
-        @state.composed["mcpJson"] = false
-        @state.mcp_origins.clear
-        return
-      end
-
-      write_atomic(target, JSON.pretty_generate({ "mcpServers" => servers }) + "\n")
-      @state.composed["mcpJson"] = true
-      @state.set_mcp_origins(origins)
-      Reporter.ok "composed #{target} (#{servers.size} server#{servers.size == 1 ? '' : 's'})"
+      @composer.compose_mcp_json!
     end
 
-    def agents_md_managed?(target)
-      File.open(target, &:readline).strip == AGENTS_MD_MARKER
-    rescue EOFError
-      false
-    end
-
-    def adopt_agents_md!(target)
-      stamp = Time.now.utc.strftime("%Y%m%dT%H%M%SZ")
-      backup = File.join(Paths.backups_dir, "#{stamp}-agentsMd-agents.md")
-      profile_dir = Paths.profile_dir(@state.active_profile_name)
-      user_copy = File.join(profile_dir, "agents.md")
-      FileUtils.mkdir_p(Paths.backups_dir)
-      FileUtils.mkdir_p(profile_dir)
-      FileUtils.cp(target, user_copy)
-      FileUtils.mv(target, backup)
-      @state.user_content["agentsMd"] = "profiles/#{@state.active_profile_name}/agents.md"
-      Reporter.warn "adopted existing #{target} (backup: #{backup}, user fragment: #{user_copy})"
-    end
-
-    def adopt_mcp_json!(target)
-      stamp = Time.now.utc.strftime("%Y%m%dT%H%M%SZ")
-      backup = File.join(Paths.backups_dir, "#{stamp}-mcpJson-mcp.json")
-      profile_dir = Paths.profile_dir(@state.active_profile_name)
-      user_copy = File.join(profile_dir, "mcp.json")
-      FileUtils.mkdir_p(Paths.backups_dir)
-      FileUtils.mkdir_p(profile_dir)
-      FileUtils.cp(target, user_copy)
-      FileUtils.mv(target, backup)
-      @state.user_content["mcpJson"] = "profiles/#{@state.active_profile_name}/mcp.json"
-      Reporter.warn "adopted existing #{target} (backup: #{backup}, user copy: #{user_copy})"
-    end
-
-    def read_user_content(key)
-      rel = @state.user_content[key]
-      return nil unless rel
-
-      path = File.join(Paths.tallmadge_home, rel)
-      File.exist?(path) ? File.read(path) : nil
-    end
-
-    def user_servers
-      rel = @state.user_content["mcpJson"]
-      return {} unless rel
-
-      path = File.join(Paths.tallmadge_home, rel)
-      return {} unless File.exist?(path)
-
-      data = JSON.parse(File.read(path)) rescue {}
-      servers = data["mcpServers"]
-      servers.is_a?(Hash) ? servers : {}
-    end
-
-    def active_agents_md_fragments
-      fragments = []
-      @state.profile_plugins.each do |id, entry|
-        info = (entry["components"] || {})["agentsMd"]
-        next unless info && info["active"]
-
-        path = plugin_agents_md_path(id)
-        next unless path
-
-        fragments << [id, File.read(path)]
-      end
-      fragments
-    end
-
-    def plugin_agents_md_path(id)
-      dir = Paths.plugin_dir(id)
-      entry = Dir.children(dir).find do |f|
-        f.casecmp?("agents.md") && File.file?(File.join(dir, f))
-      end
-      entry && File.join(dir, entry)
-    end
-
-    def plugin_mcp_servers(id)
-      dir = Paths.plugin_dir(id)
-      file = %w[mcp.json .mcp.json].map { |f| File.join(dir, f) }
-                                    .find { |f| File.file?(f) }
-      return {} unless file
-
-      data = JSON.parse(File.read(file)) rescue {}
-      servers = data["mcpServers"]
-      servers.is_a?(Hash) ? servers : {}
-    end
-
-    def write_atomic(path, content)
-      FileUtils.mkdir_p(File.dirname(path))
-      tmp = "#{path}.tmp.#{Process.pid}"
-      File.write(tmp, content)
-      File.rename(tmp, path)
+    def remove_composed_files!
+      @composer.remove_composed_files!
     end
 
     def maintain_harnesses
       Harness.maintain!(@state) if defined?(Tallmadge::Harness)
-    end
-    def remove_composed_files!
-      agents_md_target = File.join(Paths.agents_home, "agents.md")
-      if @state.composed["agentsMd"] && File.exist?(agents_md_target) && agents_md_managed?(agents_md_target)
-        File.delete(agents_md_target)
-      end
-      @state.composed["agentsMd"] = false
-
-      mcp_target = File.join(Paths.agents_home, "mcp.json")
-      if @state.composed["mcpJson"] && File.exist?(mcp_target)
-        File.delete(mcp_target)
-      end
-      @state.composed["mcpJson"] = false
-      @state.mcp_origins.clear
     end
 
     def unlink_active_components!(id)
@@ -512,26 +334,6 @@ module Tallmadge
           false
         end
       end
-    end
-
-    def deactivate_components!(id)
-      entry = @state.profile_plugins[id]
-      return 0 unless entry
-
-      components = entry["components"] || {}
-      count = 0
-      all_pairs(components).each do |section, name|
-        info = component_info(entry, section, name)
-        next unless info && info["active"]
-
-        mark_active(entry, section, name, false)
-        next if section == "agentsMd" || section == "mcpServers"
-
-        source = component_source(id, section, name)
-        target = component_target(section, name, source)
-        count += 1 if unlink!(target, id, section, name)
-      end
-      count
     end
   end
 end

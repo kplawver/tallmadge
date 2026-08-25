@@ -4,11 +4,21 @@ module Tallmadge
   # .agents Hub: catalog of downloadable .dotagents bundles (JSON).
   # Bundles are converted into a normal plugin tree in the store.
   module Hub
-    CATALOG_URL = "https://raw.githubusercontent.com/aj47/dotagents-hub/main/catalog.json"
-    BUNDLES_BASE = "https://raw.githubusercontent.com/aj47/dotagents-hub/main/bundles"
+    DEFAULT_CATALOG_URL = "https://raw.githubusercontent.com/aj47/dotagents-hub/main/catalog.json"
+    DEFAULT_BUNDLES_BASE = "https://raw.githubusercontent.com/aj47/dotagents-hub/main/bundles"
     CACHE_TTL_SECONDS = 24 * 60 * 60
 
     module_function
+
+    # Overridable via TALLMADGE_HUB_CATALOG_URL / TALLMADGE_HUB_BUNDLES_BASE env
+    # so forks/mirrors can redirect without patching source.
+    def catalog_url
+      ENV["TALLMADGE_HUB_CATALOG_URL"] || DEFAULT_CATALOG_URL
+    end
+
+    def bundles_base
+      ENV["TALLMADGE_HUB_BUNDLES_BASE"] || DEFAULT_BUNDLES_BASE
+    end
 
     def cache_path
       File.join(Paths.cache_dir, "hub-catalog.json")
@@ -20,12 +30,12 @@ module Tallmadge
       record = read_cache unless force
       return record if record
 
-      body = Http.get(CATALOG_URL)
+      body = Http.get(catalog_url)
       data =
         begin
           JSON.parse(body)
         rescue JSON::ParserError => e
-          raise Error, "invalid hub catalog JSON from #{CATALOG_URL}: #{e.message}"
+          raise Error, "invalid hub catalog JSON from #{catalog_url}: #{e.message}"
         end
 
       record = { "fetchedAt" => Time.now.utc.iso8601, "catalog" => data }
@@ -130,7 +140,7 @@ module Tallmadge
       file_name = item.dig("artifact", "fileName") || "#{bundle_id}.dotagents"
       # The raw GitHub path is deterministic; the hub host serves HTML for
       # some artifact URLs, so artifact.url is intentionally ignored.
-      url = "#{BUNDLES_BASE}/#{file_name}"
+      url = "#{bundles_base}/#{file_name}"
       bundle = fetch_bundle(url)
 
       dir = Paths.plugin_dir(id)
