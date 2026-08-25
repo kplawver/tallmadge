@@ -128,109 +128,85 @@ module Tallmadge
       }
     end
 
+    # Harness name -> candidate MCP config paths (relative to ~).
+    HARNESS_MCP_PATHS = {
+      "Claude" => [
+        File.join("Library", "Application Support", "Claude", "claude_desktop_config.json"),
+        File.join(".config", "Claude", "claude_desktop_config.json"),
+        ".claude.json"
+      ],
+      "Cursor" => [
+        File.join(".cursor", "mcp.json"),
+        File.join("Library", "Application Support", "Cursor", "mcp.json")
+      ],
+      "Cline/Roo" => [
+        File.join("Library", "Application Support", "Code", "User", "globalStorage",
+                   "saoudrizwan.claude-dev", "settings", "cline_mcp_settings.json"),
+        File.join(".config", "Code", "User", "globalStorage",
+                   "saoudrizwan.claude-dev", "settings", "cline_mcp_settings.json"),
+        File.join("Library", "Application Support", "Code", "User", "globalStorage",
+                   "rooveterinaryinc.roo-cline", "settings", "cline_mcp_settings.json")
+      ],
+      "Oh My Pi" => [
+        File.join(".omp", "agent", "mcp.json")
+      ]
+    }.freeze
+
     def inspect_mcp_configs
       findings = {}
-      inspect_claude_mcp(findings)
-      inspect_cursor_mcp(findings)
-      inspect_cline_mcp(findings)
-      inspect_omp_mcp(findings)
+      HARNESS_MCP_PATHS.each do |harness, rel_paths|
+        rel_paths.each do |rel|
+          path = File.join(Dir.home, rel)
+          next unless File.file?(path)
+
+          servers = extract_mcp_servers_from_json(path)
+          findings["#{harness} (#{path})"] = { path: path, servers: servers } if servers && !servers.empty?
+        end
+      end
       findings
-    end
-
-    def inspect_claude_mcp(findings)
-      paths = [
-        File.join(Dir.home, "Library", "Application Support", "Claude", "claude_desktop_config.json"),
-        File.join(Dir.home, ".config", "Claude", "claude_desktop_config.json"),
-        File.join(Dir.home, ".claude.json")
-      ]
-      paths.each do |path|
-        next unless File.file?(path)
-
-        servers = extract_mcp_servers_from_json(path)
-        findings["Claude (#{path})"] = { path: path, servers: servers } if servers && !servers.empty?
-      end
-    end
-
-    def inspect_cursor_mcp(findings)
-      paths = [
-        File.join(Dir.home, ".cursor", "mcp.json"),
-        File.join(Dir.home, "Library", "Application Support", "Cursor", "mcp.json")
-      ]
-      paths.each do |path|
-        next unless File.file?(path)
-
-        servers = extract_mcp_servers_from_json(path)
-        findings["Cursor (#{path})"] = { path: path, servers: servers } if servers && !servers.empty?
-      end
-    end
-
-    def inspect_cline_mcp(findings)
-      paths = [
-        File.join(Dir.home, "Library", "Application Support", "Code", "User", "globalStorage", "saoudrizwan.claude-dev", "settings", "cline_mcp_settings.json"),
-        File.join(Dir.home, ".config", "Code", "User", "globalStorage", "saoudrizwan.claude-dev", "settings", "cline_mcp_settings.json"),
-        File.join(Dir.home, "Library", "Application Support", "Code", "User", "globalStorage", "rooveterinaryinc.roo-cline", "settings", "cline_mcp_settings.json")
-      ]
-      paths.each do |path|
-        next unless File.file?(path)
-
-        servers = extract_mcp_servers_from_json(path)
-        findings["Cline/Roo (#{path})"] = { path: path, servers: servers } if servers && !servers.empty?
-      end
-    end
-
-    def inspect_omp_mcp(findings)
-      omp_mcp = File.join(Dir.home, ".omp", "agent", "mcp.json")
-      return unless File.file?(omp_mcp)
-
-      servers = extract_mcp_servers_from_json(omp_mcp)
-      findings["Oh My Pi (#{omp_mcp})"] = { path: omp_mcp, servers: servers } if servers && !servers.empty?
     end
 
     def inspect_harness_marketplaces
       findings = {}
 
       claude_mp_file = File.join(Dir.home, ".claude", "plugins", "known_marketplaces.json")
-      if File.file?(claude_mp_file)
-        data = JSON.parse(File.read(claude_mp_file)) rescue nil
-        if data.is_a?(Hash)
-          data.each do |name, info|
-            next unless info.is_a?(Hash)
+      data = load_json_file(claude_mp_file)
+      if data.is_a?(Hash)
+        data.each do |name, info|
+          next unless info.is_a?(Hash)
 
-            source = info["source"]
-            repo = source.is_a?(Hash) ? (source["repo"] || source["url"]) : source
-            install_loc = info["installLocation"]
+          source = info["source"]
+          repo = source.is_a?(Hash) ? (source["repo"] || source["url"]) : source
+          install_loc = info["installLocation"]
 
-            source_spec = if repo && !repo.empty?
-                            repo
-                          elsif install_loc && Dir.exist?(install_loc)
-                            install_loc
-                          end
+          source_spec = if repo && !repo.empty?
+                          repo
+                        elsif install_loc && Dir.exist?(install_loc)
+                          install_loc
+                        end
 
-            if source_spec
-              findings["Claude Marketplace: #{name}"] = {
-                name: name,
-                source: source_spec,
-                source_type: "claude"
-              }
-            end
+          if source_spec
+            findings["Claude Marketplace: #{name}"] = {
+              name: name,
+              source: source_spec,
+              source_type: "claude"
+            }
           end
         end
       end
 
       claude_settings = File.join(Dir.home, ".claude", "settings.json")
-      if File.file?(claude_settings)
-        data = JSON.parse(File.read(claude_settings)) rescue nil
-        extra = data && data["extraKnownMarketplaces"]
-        if extra.is_a?(Hash)
-          extra.each do |name, info|
-            source = info.is_a?(Hash) ? (info["repo"] || info["url"] || info["path"]) : info
-            if source && !source.empty?
-              findings["Claude Settings Marketplace: #{name}"] ||= {
-                name: name,
-                source: source,
-                source_type: "claude-settings"
-              }
-            end
+      data = load_json_file(claude_settings)
+      extra = data && data["extraKnownMarketplaces"]
+      if extra.is_a?(Hash)
+        extra.each do |name, info|
+          source = info.is_a?(Hash) ? (info["repo"] || info["url"] || info["path"]) : info
+          if source && !source.empty?
+            findings["Claude Settings Marketplace: #{name}"] ||= {
+              name: name,
+              source: source,
+              source_type: "claude-settings"
+            }
           end
         end
       end
@@ -242,17 +218,15 @@ module Tallmadge
       findings = {}
 
       claude_plugins_file = File.join(Dir.home, ".claude", "plugins", "installed_plugins.json")
-      if File.file?(claude_plugins_file)
-        data = JSON.parse(File.read(claude_plugins_file)) rescue nil
-        if data.is_a?(Hash)
-          entries = data["plugins"].is_a?(Hash) ? data["plugins"] : data
-          entries.each do |id, info|
-            next unless info.is_a?(Hash)
+      data = load_json_file(claude_plugins_file)
+      if data.is_a?(Hash)
+        entries = data["plugins"].is_a?(Hash) ? data["plugins"] : data
+        entries.each do |id, info|
+          next unless info.is_a?(Hash)
 
-            path = info["installPath"]
-            if path && Dir.exist?(path)
-              findings["Claude: #{id}"] = { id: id, path: path, source_type: "claude" }
-            end
+          path = info["installPath"]
+          if path && Dir.exist?(path)
+            findings["Claude: #{id}"] = { id: id, path: path, source_type: "claude" }
           end
         end
       end
@@ -281,11 +255,15 @@ module Tallmadge
         subdir = File.join(dir, sub)
         next unless Dir.exist?(subdir)
 
-        subcomp = Store.scan_components(subdir) rescue nil
-        if has_any_components?(subcomp)
-          findings["#{name}/#{sub} (#{subdir})"] ||= { id: "#{name}-#{sub}", path: subdir, source_type: source_type }
+        begin
+          subcomp = Store.scan_components(subdir)
+          if has_any_components?(subcomp)
+            findings["#{name}/#{sub} (#{subdir})"] ||= { id: "#{name}-#{sub}", path: subdir, source_type: source_type }
+          end
+        rescue StandardError => e
+          Reporter.warn "scan failed for #{subdir}: #{e.message}"
         end
-      end rescue nil
+      end
     end
 
     def has_any_components?(components)
@@ -641,8 +619,8 @@ module Tallmadge
             skipped_count += 1
             next
           end
-        rescue StandardError
-          # continue to attempt install if scan fails
+        rescue StandardError => e
+          Reporter.warn "scan failed for #{source_path}: #{e.message}; attempting install anyway"
         end
 
         begin
@@ -728,12 +706,20 @@ module Tallmadge
     end
 
     def extract_mcp_servers_from_json(path)
-      content = File.read(path)
-      data = JSON.parse(content) rescue nil
+      data = load_json_file(path)
       return {} unless data.is_a?(Hash)
 
       servers = data["mcpServers"] || data["mcp_servers"]
       servers.is_a?(Hash) ? servers : {}
+    end
+
+    # Parse a JSON file, returning nil when missing or unparseable.
+    def load_json_file(path)
+      return nil unless File.file?(path)
+
+      JSON.parse(File.read(path))
+    rescue JSON::ParserError, Errno::ENOENT
+      nil
     end
 
     def prompt_yes_no(prompt, default: true)

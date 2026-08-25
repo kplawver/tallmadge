@@ -23,119 +23,114 @@ module Tallmadge
 
     # ---- add -----------------------------------------------------------------
 
-def add(state, source, auto_install: true)
-  case classify(source)
-  when :github then add_git(state, "https://github.com/#{source}.git",
-                            { "type" => "github", "repo" => source }, source, auto_install: auto_install)
-  when :git then add_git(state, source, { "type" => "git", "url" => source }, source, auto_install: auto_install)
-  when :path then add_path(state, File.expand_path(source), auto_install: auto_install)
-  when :url then add_url(state, source, auto_install: auto_install)
-  end
-end
-
-# Installs every valid plugin from a marketplace catalog, or ensures
-# already-installed plugins are present in the current profile. Called
-# after marketplace add so plugins are immediately available to
-# `clpr list` and `clpr activate` without a separate `clpr install` step.
-def install_marketplace_plugins(state, name, catalog)
-  installer = Installer.new(state)
-  valid_entries(catalog).each do |entry|
-    id = "#{entry['name']}@#{name}"
-    if state.plugins.key?(id)
-      state.ensure_profile_plugin!(id)
-    else
-      installer.install("#{entry['name']}@#{name}")
+    def add(state, source, auto_install: true)
+      case classify(source)
+      when :github then add_git(state, "https://github.com/#{source}.git",
+                                { "type" => "github", "repo" => source }, source, auto_install: auto_install)
+      when :git then add_git(state, source, { "type" => "git", "url" => source }, source, auto_install: auto_install)
+      when :path then add_path(state, File.expand_path(source), auto_install: auto_install)
+      when :url then add_url(state, source, auto_install: auto_install)
+      end
     end
-  rescue Error => e
-    Reporter.warn "skipped #{entry['name']}@#{name}: #{e.message}"
-  end
-  state.save
-end
 
-def add_git(state, url, source_record, source_desc, auto_install: true)
-  Dir.mktmpdir("tallmadge-marketplace") do |tmp|
-    clone_dir = File.join(tmp, "repo")
-    Git.clone(url, clone_dir)
-    catalog = read_catalog!(clone_dir, source_desc)
-    validate_catalog!(catalog, source_desc)
-    name = catalog["name"]
-    if state.marketplaces.key?(name)
+    # Installs every valid plugin from a marketplace catalog, or ensures
+    # already-installed plugins are present in the current profile. Called
+    # after marketplace add so plugins are immediately available to
+    # `clpr list` and `clpr activate` without a separate `clpr install` step.
+    def install_marketplace_plugins(state, name, catalog)
+      installer = Installer.new(state)
+      valid_entries(catalog).each do |entry|
+        id = "#{entry['name']}@#{name}"
+        if state.plugins.key?(id)
+          state.ensure_profile_plugin!(id)
+        else
+          installer.install("#{entry['name']}@#{name}")
+        end
+      rescue Error => e
+        Reporter.warn "skipped #{entry['name']}@#{name}: #{e.message}"
+      end
+      state.save
+    end
+
+    # When the marketplace name is already registered, just include it in the
+    # active profile (dedup), optionally install plugins, report, and return.
+    # Returns true when the early return path was taken.
+    def register_existing_marketplace(state, name, catalog, auto_install:)
+      return false unless state.marketplaces.key?(name)
+
       state.profile_marketplaces << name unless state.profile_marketplaces.include?(name)
       state.save
       install_marketplace_plugins(state, name, catalog) if auto_install
       Reporter.ok "marketplace #{Reporter.name(name)} already added; included in profile #{state.active_profile_name}"
-      return
+      true
     end
 
-    FileUtils.mv(clone_dir, Paths.marketplace_dir(name))
-    state.marketplaces[name] = {
-      "source" => source_record,
-      "path" => "marketplaces/#{name}",
-      "sha" => Git.head_sha(Paths.marketplace_dir(name)),
-      "updatedAt" => Time.now.utc.iso8601
-    }
-    state.profile_marketplaces << name unless state.profile_marketplaces.include?(name)
-    state.save
-    install_marketplace_plugins(state, name, catalog) if auto_install
-    Reporter.ok "added marketplace #{Reporter.name(name)} " \
-                "(#{valid_entries(catalog).size} plugins, #{state.marketplaces[name]['sha'][0, 7]})"
-  end
-end
+    def add_git(state, url, source_record, source_desc, auto_install: true)
+      Dir.mktmpdir("tallmadge-marketplace") do |tmp|
+        clone_dir = File.join(tmp, "repo")
+        Git.clone(url, clone_dir)
+        catalog = read_catalog!(clone_dir, source_desc)
+        validate_catalog!(catalog, source_desc)
+        name = catalog["name"]
+        next if register_existing_marketplace(state, name, catalog, auto_install: auto_install)
 
-def add_path(state, dir, auto_install: true)
-  raise Error, "no such directory: #{dir}" unless Dir.exist?(dir)
+        FileUtils.mv(clone_dir, Paths.marketplace_dir(name))
+        state.marketplaces[name] = {
+          "source" => source_record,
+          "path" => "marketplaces/#{name}",
+          "sha" => Git.head_sha(Paths.marketplace_dir(name)),
+          "updatedAt" => Time.now.utc.iso8601
+        }
+        state.profile_marketplaces << name unless state.profile_marketplaces.include?(name)
+        state.save
+        install_marketplace_plugins(state, name, catalog) if auto_install
+        Reporter.ok "added marketplace #{Reporter.name(name)} " \
+                    "(#{valid_entries(catalog).size} plugins, #{state.marketplaces[name]['sha'][0, 7]})"
+      end
+    end
 
-  catalog = read_catalog!(dir, dir)
-  validate_catalog!(catalog, dir)
-  name = catalog["name"]
-  if state.marketplaces.key?(name)
-    state.profile_marketplaces << name unless state.profile_marketplaces.include?(name)
-    state.save
-    install_marketplace_plugins(state, name, catalog) if auto_install
-    Reporter.ok "marketplace #{Reporter.name(name)} already added; included in profile #{state.active_profile_name}"
-    return
-  end
+    def add_path(state, dir, auto_install: true)
+      raise Error, "no such directory: #{dir}" unless Dir.exist?(dir)
 
-  state.marketplaces[name] = {
-    "source" => { "type" => "path", "path" => dir },
-    "path" => dir,
-    "sha" => nil,
-    "updatedAt" => Time.now.utc.iso8601
-  }
-  state.profile_marketplaces << name unless state.profile_marketplaces.include?(name)
-  state.save
-  install_marketplace_plugins(state, name, catalog) if auto_install
-  Reporter.ok "added marketplace #{Reporter.name(name)} (path #{dir}, " \
-              "#{valid_entries(catalog).size} plugins)"
-end
+      catalog = read_catalog!(dir, dir)
+      validate_catalog!(catalog, dir)
+      name = catalog["name"]
+      return if register_existing_marketplace(state, name, catalog, auto_install: auto_install)
 
-def add_url(state, url, auto_install: true)
-  body = Http.get(url)
-  catalog = parse_json!(body, url)
-  validate_catalog!(catalog, url)
-  name = catalog["name"]
-  if state.marketplaces.key?(name)
-    state.profile_marketplaces << name unless state.profile_marketplaces.include?(name)
-    state.save
-    install_marketplace_plugins(state, name, catalog) if auto_install
-    Reporter.ok "marketplace #{Reporter.name(name)} already added; included in profile #{state.active_profile_name}"
-    return
-  end
+      state.marketplaces[name] = {
+        "source" => { "type" => "path", "path" => dir },
+        "path" => dir,
+        "sha" => nil,
+        "updatedAt" => Time.now.utc.iso8601
+      }
+      state.profile_marketplaces << name unless state.profile_marketplaces.include?(name)
+      state.save
+      install_marketplace_plugins(state, name, catalog) if auto_install
+      Reporter.ok "added marketplace #{Reporter.name(name)} (path #{dir}, " \
+                  "#{valid_entries(catalog).size} plugins)"
+    end
 
-  dir = Paths.marketplace_dir(name)
-  FileUtils.mkdir_p(dir)
-  File.write(File.join(dir, "marketplace.json"), body)
-  state.marketplaces[name] = {
-    "source" => { "type" => "url", "url" => url },
-    "path" => "marketplaces/#{name}",
-    "sha" => nil,
-    "updatedAt" => Time.now.utc.iso8601
-  }
-  state.profile_marketplaces << name unless state.profile_marketplaces.include?(name)
-  state.save
-  install_marketplace_plugins(state, name, catalog) if auto_install
-  Reporter.ok "added marketplace #{Reporter.name(name)} (url, #{valid_entries(catalog).size} plugins)"
-end
+    def add_url(state, url, auto_install: true)
+      body = Http.get(url)
+      catalog = parse_json!(body, url)
+      validate_catalog!(catalog, url)
+      name = catalog["name"]
+      return if register_existing_marketplace(state, name, catalog, auto_install: auto_install)
+
+      dir = Paths.marketplace_dir(name)
+      FileUtils.mkdir_p(dir)
+      File.write(File.join(dir, "marketplace.json"), body)
+      state.marketplaces[name] = {
+        "source" => { "type" => "url", "url" => url },
+        "path" => "marketplaces/#{name}",
+        "sha" => nil,
+        "updatedAt" => Time.now.utc.iso8601
+      }
+      state.profile_marketplaces << name unless state.profile_marketplaces.include?(name)
+      state.save
+      install_marketplace_plugins(state, name, catalog) if auto_install
+      Reporter.ok "added marketplace #{Reporter.name(name)} (url, #{valid_entries(catalog).size} plugins)"
+    end
 
     # ---- catalog access ------------------------------------------------------
 
