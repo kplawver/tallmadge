@@ -38,7 +38,6 @@ module Tallmadge
         linked += 1
       end
 
-      @state.save
       compose_agents_md!
       compose_mcp_json!
       @state.save
@@ -68,7 +67,6 @@ module Tallmadge
         unlink!(target, id, section, name)
       end
 
-      @state.save
       compose_agents_md!
       compose_mcp_json!
       @state.save
@@ -336,26 +334,6 @@ module Tallmadge
           false
         end
       end
-    end
-
-    def deactivate_components!(id)
-      entry = @state.profile_plugins[id]
-      return 0 unless entry
-
-      components = entry["components"] || {}
-      count = 0
-      all_pairs(components).each do |section, name|
-        info = component_info(entry, section, name)
-        next unless info && info["active"]
-
-        mark_active(entry, section, name, false)
-        next if section == "agentsMd" || section == "mcpServers"
-
-        source = component_source(id, section, name)
-        target = component_target(section, name, source)
-        count += 1 if unlink!(target, id, section, name)
-      end
-      count
     end
   end
 end
