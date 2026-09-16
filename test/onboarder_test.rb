@@ -232,4 +232,80 @@ class OnboarderTest < Minitest::Test
     end
     assert_match(%r{No ~/.agents backup found}, err.message)
   end
+
+  # ---- refresh ----
+
+  def test_refresh_imports_new_mcp_servers
+    write home("Library", "Application Support", "Claude", "claude_desktop_config.json"), JSON.pretty_generate({
+      "mcpServers" => {
+        "claude-server" => { "command" => "npx", "args" => ["-y", "claude-srv"] }
+      }
+    })
+
+    onboarder = Tallmadge::Onboarder.new(state)
+    out, = capture_io { onboarder.refresh(non_interactive: true, auto_yes: true) }
+
+    assert_match(/Refresh complete/, out)
+    user_mcp = JSON.parse(File.read(home(".tallmadge", "profiles", "default", "mcp.json")))
+    assert user_mcp["mcpServers"].key?("claude-server")
+  end
+
+  def test_refresh_deduplicates_already_imported_mcp_servers
+    write home("Library", "Application Support", "Claude", "claude_desktop_config.json"), JSON.pretty_generate({
+      "mcpServers" => {
+        "dup-server" => { "command" => "existing" }
+      }
+    })
+
+    # First import via setup
+    onboarder = Tallmadge::Onboarder.new(state)
+    capture_io { onboarder.refresh(non_interactive: true, auto_yes: true) }
+
+    # Second refresh should dedup
+    out, = capture_io { onboarder.refresh(non_interactive: true, auto_yes: true) }
+    assert_match(/skipped\/deduped/, out)
+  end
+
+  def test_refresh_detects_and_links_newly_installed_harness
+    FileUtils.mkdir_p(home(".omp", "agent"))
+
+    # Install and activate an agent plugin so there's something to bridge
+    dir = home("fixture", "agent-plugin")
+    write File.join(dir, "agents", "worker", "agent.md"), "---\nname: worker\n---\nWork\n"
+    capture_io { Tallmadge::Installer.new(state).install_path(dir, as: "agent-plugin") }
+    capture_io { Tallmadge::Activator.new(state).activate("agent-plugin") }
+
+    refute state.harnesses.key?("omp")
+
+    onboarder = Tallmadge::Onboarder.new(state)
+    out, = capture_io { onboarder.refresh(non_interactive: true, auto_yes: true) }
+
+    assert_match(/Newly detected harness: omp/, out)
+    assert_match(/Refresh complete/, out)
+    s = state
+    assert s.harnesses.key?("omp")
+    link = home(".omp", "agent", "agents", "worker.md")
+    assert File.symlink?(link)
+  end
+
+  def test_refresh_preserves_existing_symlinks
+    dir = home("fixture", "my-plugin")
+    write File.join(dir, "skills", "my-skill", "SKILL.md"), skill_md(name: "my-skill")
+    capture_io { Tallmadge::Installer.new(state).install_path(dir, as: "my-plugin") }
+    capture_io { Tallmadge::Activator.new(state).activate("my-plugin") }
+
+    assert File.symlink?(agents("skills", "my-skill"))
+
+    onboarder = Tallmadge::Onboarder.new(state)
+    capture_io { onboarder.refresh(non_interactive: true, auto_yes: true) }
+
+    assert File.symlink?(agents("skills", "my-skill")), "symlink should survive refresh"
+  end
+
+  def test_refresh_safe_when_nothing_new
+    onboarder = Tallmadge::Onboarder.new(state)
+    out, = capture_io { onboarder.refresh(non_interactive: true, auto_yes: true) }
+
+    assert_match(/Refresh complete/, out)
+  end
 end
