@@ -59,6 +59,14 @@ module Tallmadge
       Onboarder.new(state).restore(backup_path: options[:from], non_interactive: options[:non_interactive], auto_yes: options[:yes])
     end
 
+    desc "refresh", "Pick up new plugins, MCP configs, and harnesses since last setup"
+    option :yes, aliases: "-y", type: :boolean, desc: "Automatically accept all prompts"
+    option :non_interactive, type: :boolean, desc: "Run non-interactively"
+    def refresh
+      state = State.load
+      Onboarder.new(state).refresh(non_interactive: options[:non_interactive], auto_yes: options[:yes])
+    end
+
     desc "init", "Create the ~/.tallmadge and ~/.agents directory skeleton"
     option :onboard, type: :boolean, desc: "Run onboarding during initialization"
     option :yes, aliases: "-y", type: :boolean, desc: "Automatically accept all prompts during onboarding"

@@ -68,6 +68,58 @@ module Tallmadge
       Reporter.ok "Setup and onboarding complete!"
     end
 
+    # Incremental version of `run`: picks up new external MCP configs,
+    # marketplaces, and plugins without the destructive backup/migration
+    # of ~/.agents. Also detects and links newly installed harnesses.
+    def refresh(non_interactive: false, auto_yes: false)
+      Reporter.info "=== Tallmadge Refresh ==="
+
+      Paths.ensure_skeleton!
+
+      mcp_findings = inspect_mcp_configs
+      marketplace_findings = inspect_harness_marketplaces
+      plugin_findings = inspect_harness_plugins
+
+      if mcp_findings.any?
+        handle_mcp_imports(mcp_findings, non_interactive: non_interactive, auto_yes: auto_yes)
+      end
+
+      if marketplace_findings.any?
+        handle_marketplace_imports(marketplace_findings, non_interactive: non_interactive, auto_yes: auto_yes)
+      end
+
+      if plugin_findings.any?
+        handle_plugin_imports(plugin_findings, non_interactive: non_interactive, auto_yes: auto_yes)
+      end
+
+      detect_and_link_new_harnesses
+
+      if @state.plugins.any? || @state.user_content["agentsMd"] || @state.user_content["mcpJson"]
+        Activator.new(@state).apply_profile!
+      end
+
+      @state.save
+      Reporter.ok "Refresh complete!"
+    end
+
+    # Links harnesses installed since last setup/refresh and warns about
+    # previously linked harnesses that are no longer installed.
+    def detect_and_link_new_harnesses
+      installed = Harness.installed_harnesses
+      linked = @state.harnesses.keys
+
+      (installed - linked).each do |hid|
+        Reporter.info "Newly detected harness: #{hid}"
+        Harness.link(@state, hid)
+      rescue Error => e
+        Reporter.err "Failed to link harness '#{hid}': #{e.message}"
+      end
+
+      (linked - installed).each do |hid|
+        Reporter.warn "harness '#{hid}' is no longer installed; links will be skipped"
+      end
+    end
+
     # Shared by Migration and Restore for interactive confirmation.
     def prompt_yes_no(prompt, default: true)
       default_str = default ? "[Y/n]" : "[y/N]"
