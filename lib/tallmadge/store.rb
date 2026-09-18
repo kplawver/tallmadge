@@ -131,15 +131,22 @@ module Tallmadge
     end
 
     def scan_mcp(dir, components)
-      mcp_file = %w[mcp.json .mcp.json].map { |f| File.join(dir, f) }
-                                        .find { |f| File.file?(f) }
-      return unless mcp_file
+      mcp_servers_in(dir).each_key { |name| components["mcpServers"][name] = inactive }
+    end
 
-      data = JSON.parse(File.read(mcp_file)) rescue {}
+    # mcpServers map from dir's mcp.json/.mcp.json; {} when absent or invalid.
+    def mcp_servers_in(dir)
+      file = %w[mcp.json .mcp.json].map { |f| File.join(dir, f) }.find { |f| File.file?(f) }
+      return {} unless file
+
+      data = JSON.parse(File.read(file)) rescue {}
       servers = data["mcpServers"]
-      return unless servers.is_a?(Hash)
+      servers.is_a?(Hash) ? servers : {}
+    end
 
-      servers.each_key { |name| components["mcpServers"][name] = inactive }
+    # mcpServers map for an installed plugin.
+    def mcp_servers(id)
+      mcp_servers_in(Paths.plugin_dir(id))
     end
 
     def scan_agents_md(dir, components)

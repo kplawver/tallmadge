@@ -57,6 +57,8 @@ module Tallmadge
       origins = {}
 
       user_servers.each do |name, config|
+        next if @state.mcp_disabled.include?(name)
+
         servers[name] = config
         origins[name] = "user"
       end
@@ -65,7 +67,7 @@ module Tallmadge
         info = (entry["components"] || {})["mcpServers"]
         next if info.nil? || info.empty?
 
-        plugin_servers = plugin_mcp_servers(id)
+        plugin_servers = Store.mcp_servers(id)
         info.each_key do |server_name|
           next unless info[server_name]["active"]
 
@@ -119,6 +121,18 @@ module Tallmadge
       false
     end
 
+    def user_servers
+      rel = @state.user_content["mcpJson"]
+      return {} unless rel
+
+      path = File.join(Paths.tallmadge_home, rel)
+      return {} unless File.exist?(path)
+
+      data = JSON.parse(File.read(path)) rescue {}
+      servers = data["mcpServers"]
+      servers.is_a?(Hash) ? servers : {}
+    end
+
     private
 
     def adopt_agents_md!(target)
@@ -150,18 +164,6 @@ module Tallmadge
       File.exist?(path) ? File.read(path) : nil
     end
 
-    def user_servers
-      rel = @state.user_content["mcpJson"]
-      return {} unless rel
-
-      path = File.join(Paths.tallmadge_home, rel)
-      return {} unless File.exist?(path)
-
-      data = JSON.parse(File.read(path)) rescue {}
-      servers = data["mcpServers"]
-      servers.is_a?(Hash) ? servers : {}
-    end
-
     def active_agents_md_fragments
       fragments = []
       @state.profile_plugins.each do |id, entry|
@@ -182,17 +184,6 @@ module Tallmadge
         f.casecmp?("agents.md") && File.file?(File.join(dir, f))
       end
       entry && File.join(dir, entry)
-    end
-
-    def plugin_mcp_servers(id)
-      dir = Paths.plugin_dir(id)
-      file = %w[mcp.json .mcp.json].map { |f| File.join(dir, f) }
-                                    .find { |f| File.file?(f) }
-      return {} unless file
-
-      data = JSON.parse(File.read(file)) rescue {}
-      servers = data["mcpServers"]
-      servers.is_a?(Hash) ? servers : {}
     end
 
     def write_atomic(path, content)
