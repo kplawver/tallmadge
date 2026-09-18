@@ -77,7 +77,7 @@ clpr restore --from ~/.tallmadge/backups/YYYYMMDDTHHMMSSZ-agents-backup
   clpr install user/agent-plugin --as my-alias
   ```
 - **`clpr activate <id> ...`**: Symlink plugins' components into `~/.agents/` and compose `AGENTS.md` / `mcp.json`. Accepts multiple ids.
-  - Filter by component: `--skill <name>`, `--agent <name>`, `--task <name>`, `--memory <name>` (applies to every id given).
+  - Filter by component: `--skill <name>`, `--agent <name>`, `--task <name>`, `--memory <name>`, `--mcp <name>` (applies to every id given).
   - Force override conflicts: `--force`.
   ```bash
   clpr activate my-plugin
@@ -101,6 +101,22 @@ clpr restore --from ~/.tallmadge/backups/YYYYMMDDTHHMMSSZ-agents-backup
   clpr edit mcp.json    # create/open your personal MCP servers
   ```
   Saved changes flow into the composed `~/.agents/agents.md` / `mcp.json` on the next rebuild (any `activate`, `deactivate`, or profile switch).
+
+### MCP Server Management (`clpr mcp`)
+
+- **`clpr mcp list`**: Table of every MCP server — your user servers plus each installed plugin's — with origin, type, and active status.
+- **`clpr mcp get <name>`**: Show one server's config, origin, and status.
+- **`clpr mcp add <name> ...`**: Add a server to your user mcp.json and recompose:
+  ```bash
+  clpr mcp add github --env GITHUB_TOKEN=abc -- npx -y @modelcontextprotocol/server-github
+  clpr mcp add remote --url https://example.com/mcp
+  clpr mcp add events --transport sse --url https://example.com/sse
+  clpr mcp add custom --config '{"type":"http","url":"https://example.com/mcp","headers":{"X-Key":"v"}}'
+  ```
+- **`clpr mcp remove <name>`**: Remove a server from your user config.
+- **`clpr mcp activate <name>` / `clpr mcp deactivate <name>`**: Enable or disable a user server, or activate/deactivate a plugin-provided one by name.
+
+User servers live in the active profile's `mcp.json`; plugin servers can also be toggled per-server via `clpr activate <plugin> --mcp <name>`. `clpr edit mcp.json` still opens the raw user file.
 
 ---
 

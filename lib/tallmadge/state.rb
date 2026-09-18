@@ -9,6 +9,7 @@ module Tallmadge
       "marketplaces" => [],
       "userContent" => { "agentsMd" => nil, "mcpJson" => nil },
       "mcpOrigins" => {},
+      "mcpDisabled" => [],
       "composed" => { "agentsMd" => false, "mcpJson" => false },
       "harnesses" => {}
     }.freeze
@@ -106,6 +107,19 @@ module Tallmadge
     def mcp_origins = active_profile["mcpOrigins"]
     def user_content = active_profile["userContent"]
     def composed = active_profile["composed"]
+
+    def mcp_disabled
+      active_profile["mcpDisabled"] || []
+    end
+
+    def disable_mcp_server!(name)
+      active_profile["mcpDisabled"] ||= []
+      active_profile["mcpDisabled"] << name unless active_profile["mcpDisabled"].include?(name)
+    end
+
+    def enable_mcp_server!(name)
+      active_profile["mcpDisabled"]&.delete(name)
+    end
 
     def set_mcp_origins(origins)
       active_profile["mcpOrigins"] = origins

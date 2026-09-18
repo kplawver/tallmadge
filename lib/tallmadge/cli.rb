@@ -21,6 +21,9 @@ module Tallmadge
     desc "profile SUBCOMMAND", "Manage profiles (switchable plugin/marketplace/content sets)"
     subcommand "profile", ProfileCLI
 
+    desc "mcp SUBCOMMAND", "Manage MCP servers in the composed mcp.json"
+    subcommand "mcp", McpCLI
+
     def self.exit_on_failure?
       true
     end
@@ -97,6 +100,7 @@ module Tallmadge
     option :task, desc: "Activate only this task"
     option :memory, desc: "Activate only this memory file"
     option :force, type: :boolean, desc: "Back up and replace conflicting targets"
+    option :mcp, desc: "Activate only this MCP server"
     def activate(*ids)
       require_ids!(ids)
       state = State.load
@@ -110,6 +114,7 @@ module Tallmadge
     option :agent, desc: "Deactivate only this agent"
     option :task, desc: "Deactivate only this task"
     option :memory, desc: "Deactivate only this memory file"
+    option :mcp, desc: "Deactivate only this MCP server"
     def deactivate(*ids)
       require_ids!(ids)
       activator = Activator.new(State.load)
@@ -235,6 +240,7 @@ module Tallmadge
       def component_filter
         pairs = []
         pairs << ["skills", options[:skill]] if options[:skill]
+        pairs << ["mcpServers", options[:mcp]] if options[:mcp]
         pairs << ["agents", options[:agent]] if options[:agent]
         pairs << ["tasks", options[:task]] if options[:task]
         pairs << ["memories", options[:memory]] if options[:memory]
