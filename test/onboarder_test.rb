@@ -250,6 +250,26 @@ class OnboarderTest < Minitest::Test
     assert user_mcp["mcpServers"].key?("claude-server")
   end
 
+  def test_refresh_imports_servers_from_newer_harness_config_locations
+    write home(".cline", "data", "settings", "cline_mcp_settings.json"), JSON.pretty_generate({
+      "mcpServers" => { "cline-server" => { "command" => "node", "args" => ["cline.js"] } }
+    })
+    write home(".copilot", "mcp-config.json"), JSON.pretty_generate({
+      "mcpServers" => { "copilot-server" => { "command" => "npx" } }
+    })
+    # Amp namespaces the same per-server shape under its own settings key.
+    write home(".config", "amp", "settings.json"), JSON.pretty_generate({
+      "amp.mcpServers" => { "amp-server" => { "url" => "https://example.com/mcp" } }
+    })
+
+    capture_io { Tallmadge::Onboarder.new(state).refresh(non_interactive: true, auto_yes: true) }
+
+    servers = JSON.parse(File.read(home(".tallmadge", "profiles", "default", "mcp.json")))["mcpServers"]
+    assert servers.key?("cline-server")
+    assert servers.key?("copilot-server")
+    assert_equal "https://example.com/mcp", servers.dig("amp-server", "url")
+  end
+
   def test_refresh_deduplicates_already_imported_mcp_servers
     write home("Library", "Application Support", "Claude", "claude_desktop_config.json"), JSON.pretty_generate({
       "mcpServers" => {
@@ -280,12 +300,39 @@ class OnboarderTest < Minitest::Test
     onboarder = Tallmadge::Onboarder.new(state)
     out, = capture_io { onboarder.refresh(non_interactive: true, auto_yes: true) }
 
-    assert_match(/Newly detected harness: omp/, out)
+    assert_match(/Newly detected harnesses: omp/, out)
     assert_match(/Refresh complete/, out)
     s = state
     assert s.harnesses.key?("omp")
     link = home(".omp", "agent", "agents", "worker.md")
     assert File.symlink?(link)
+  end
+
+  def test_refresh_asks_before_bridging_newly_detected_harnesses
+    FileUtils.mkdir_p(home(".omp", "agent"))
+
+    dir = home("fixture", "agent-plugin")
+    write File.join(dir, "agents", "worker", "agent.md"), "---\nname: worker\n---\nWork\n"
+    capture_io { Tallmadge::Installer.new(state).install_path(dir, as: "agent-plugin") }
+    capture_io { Tallmadge::Activator.new(state).activate("agent-plugin") }
+
+    onboarder = Tallmadge::Onboarder.new(state, input: StringIO.new("n\n"))
+    out, = capture_io { onboarder.refresh }
+
+    assert_match(/clpr link HARNESS/, out)
+    refute state.harnesses.key?("omp"), "declining the prompt must not link the harness"
+    refute File.symlink?(home(".omp", "agent", "agents", "worker.md"))
+  end
+
+  def test_refresh_imports_devin_servers_from_pre_migration_config
+    write home(".config", "devin", "config.json"), JSON.pretty_generate({
+      "mcpServers" => { "devin-server" => { "command" => "node", "args" => ["srv.js"] } }
+    })
+
+    capture_io { Tallmadge::Onboarder.new(state).refresh(non_interactive: true, auto_yes: true) }
+
+    servers = JSON.parse(File.read(home(".tallmadge", "profiles", "default", "mcp.json")))["mcpServers"]
+    assert servers.key?("devin-server")
   end
 
   def test_refresh_preserves_existing_symlinks

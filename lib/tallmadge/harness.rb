@@ -1,68 +1,293 @@
 # frozen_string_literal: true
 
 module Tallmadge
-  # Harness gap-bridging. Native .agents support (verified):
-  #   omp: reads ~/.agents/AGENTS.md and ~/.agents/skills; subagents load
-  #        from FLAT files ~/.omp/agent/agents/<name>.md; no tasks/memories/mcp.
-  #   pi:  reads ~/.agents/skills globally; global context from
-  #        ~/.pi/agent/AGENTS.md; no markdown subagent slot; no mcp.json.
-  # clpr link only fills those gaps.
+  # Harness gap-bridging. Every adapter records what a harness already reads
+  # out of ~/.agents ("native") and where its own global config lives
+  # ("bridge"); clpr only symlinks the gaps. Facts below were verified
+  # against each harness's docs or source in September 2026 — re-verify
+  # before changing a path, and never guess one.
+  #
+  # Bridge kinds:
+  #   instructions       single file fed by the composed ~/.agents/agents.md
+  #   skills             directory that gets one symlink per active skill
+  #   agents             subagent directory; "flat" links <name><suffix> to
+  #                      agents/<name>/agent.md, "dir" links the whole
+  #                      agents/<name> directory
+  #   mcp                file fed by the composed ~/.agents/mcp.json
+  #                      (only where the harness reads a dedicated
+  #                      {"mcpServers": {...}} file)
+  #   uppercaseAgentsMd  harness reads ~/.agents/AGENTS.md by exact name,
+  #                      which the composed lowercase agents.md only
+  #                      satisfies on a case-insensitive filesystem
   module Harness
     ADAPTERS = {
-      "omp" => { "home" => ".omp" },
-      "pi" => { "home" => ".pi" }
+      "omp" => {
+        "label" => "Oh My Pi",
+        "detect" => [".omp"],
+        "native" => %w[agentsMd skills],
+        "bridge" => {
+          "uppercaseAgentsMd" => true,
+          "agents" => { "dir" => ".omp/agent/agents", "layout" => "flat" }
+        },
+        "notes" => ["tasks, memories, and mcp.json are not read by omp"]
+      },
+      "pi" => {
+        "label" => "Pi",
+        "detect" => [".pi"],
+        "native" => %w[skills],
+        "bridge" => { "instructions" => ".pi/agent/AGENTS.md" },
+        "notes" => ["pi has no subagent slot; mcp.json is not read by pi"]
+      },
+      "cline" => {
+        "label" => "Cline",
+        "detect" => [".cline"],
+        "env" => { "var" => "CLINE_DIR", "prefix" => ".cline" },
+        "native" => %w[agentsMd skills],
+        "bridge" => {
+          "uppercaseAgentsMd" => true,
+          "mcp" => ".cline/data/settings/cline_mcp_settings.json"
+        },
+        "notes" => [
+          "subagents are YAML files in ~/.cline/agents — not bridged",
+          "servers Cline adds itself land in the linked mcp.json and are " \
+          "replaced on the next compose — manage them with clpr mcp add"
+        ]
+      },
+      "kilo" => {
+        "label" => "Kilo Code",
+        "detect" => [".config/kilo", ".kilo"],
+        "env" => { "var" => "XDG_CONFIG_HOME", "prefix" => ".config" },
+        "native" => %w[skills],
+        "bridge" => {
+          "instructions" => ".config/kilo/AGENTS.md",
+          "agents" => { "dir" => ".config/kilo/agent", "layout" => "flat" }
+        },
+        "notes" => ["MCP servers live under the mcp key of kilo.jsonc — not bridged"]
+      },
+      "amp" => {
+        "label" => "Amp",
+        "detect" => [".config/amp"],
+        "env" => { "var" => "XDG_CONFIG_HOME", "prefix" => ".config" },
+        "native" => %w[skills],
+        "bridge" => { "instructions" => ".config/amp/AGENTS.md" },
+        "notes" => [
+          "custom agents are TypeScript plugins — not bridged",
+          "MCP servers live under amp.mcpServers in settings.json — not bridged"
+        ]
+      },
+      "devin" => {
+        "label" => "Devin CLI",
+        "detect" => [".config/devin"],
+        "env" => { "var" => "XDG_CONFIG_HOME", "prefix" => ".config" },
+        "native" => %w[skills],
+        "bridge" => {
+          "instructions" => ".config/devin/AGENTS.md",
+          "agents" => { "dir" => ".config/devin/agents", "layout" => "dir" },
+          "mcp" => ".config/devin/mcp_config.json"
+        },
+        "notes" => [
+          "cloud Devin reads repo files only; this bridges the Devin CLI",
+          "devin mcp add -s user writes the linked mcp.json and clpr " \
+          "replaces those servers on the next compose — use clpr mcp add"
+        ]
+      },
+      "claude" => {
+        "label" => "Claude Code",
+        "detect" => [".claude"],
+        "env" => { "var" => "CLAUDE_CONFIG_DIR", "prefix" => ".claude" },
+        "native" => [],
+        "bridge" => {
+          "instructions" => ".claude/CLAUDE.md",
+          "skills" => ".claude/skills",
+          "agents" => { "dir" => ".claude/agents", "layout" => "flat" }
+        },
+        "notes" => ["user MCP servers share ~/.claude.json with app state — not bridged"]
+      },
+      "codex" => {
+        "label" => "Codex CLI",
+        "detect" => [".codex"],
+        "env" => { "var" => "CODEX_HOME", "prefix" => ".codex" },
+        "native" => %w[skills],
+        "bridge" => { "instructions" => ".codex/AGENTS.md" },
+        "notes" => ["subagents and MCP servers are TOML (~/.codex) — not bridged"]
+      },
+      "opencode" => {
+        "label" => "opencode",
+        "detect" => [".config/opencode"],
+        "env" => { "var" => "XDG_CONFIG_HOME", "prefix" => ".config" },
+        "native" => %w[skills],
+        "bridge" => {
+          "instructions" => ".config/opencode/AGENTS.md",
+          "agents" => { "dir" => ".config/opencode/agent", "layout" => "flat" }
+        },
+        "notes" => ["MCP servers live under the mcp key of opencode.json — not bridged"]
+      },
+      "gemini" => {
+        "label" => "Gemini CLI",
+        "detect" => [".gemini"],
+        "native" => %w[skills],
+        "bridge" => {
+          "instructions" => ".gemini/GEMINI.md",
+          "agents" => { "dir" => ".gemini/agents", "layout" => "flat" }
+        },
+        "notes" => ["MCP servers live under mcpServers in settings.json — not bridged"]
+      },
+      "cursor" => {
+        "label" => "Cursor CLI",
+        "detect" => [".cursor"],
+        "env" => { "var" => "CURSOR_CONFIG_DIR", "prefix" => ".cursor" },
+        "native" => %w[skills],
+        "bridge" => {
+          "agents" => { "dir" => ".cursor/agents", "layout" => "flat" },
+          "mcp" => ".cursor/mcp.json"
+        },
+        "notes" => ["user rules live in Cursor's settings UI, not a file — agents.md is not bridged"]
+      },
+      "copilot" => {
+        "label" => "GitHub Copilot CLI",
+        "detect" => [".copilot"],
+        "env" => { "var" => "COPILOT_HOME", "prefix" => ".copilot" },
+        "native" => %w[skills],
+        "bridge" => {
+          "instructions" => ".copilot/copilot-instructions.md",
+          "agents" => { "dir" => ".copilot/agents", "layout" => "flat", "suffix" => ".agent.md" },
+          "mcp" => ".copilot/mcp-config.json"
+        }
+      }
     }.freeze
+
+    NATIVE_LABELS = { "agentsMd" => "agents.md", "skills" => "skills" }.freeze
 
     module_function
 
+    def adapter(harness_id)
+      ADAPTERS.fetch(harness_id)
+    end
+
+    # Adapter paths are written relative to ~; a harness that relocates its
+    # whole config tree through an environment variable re-roots the part of
+    # the path that variable owns.
+    def harness_path(harness_id, rel)
+      env = adapter(harness_id)["env"]
+      root = env && ENV[env["var"]]
+      return File.join(Dir.home, rel) if root.nil? || root.empty?
+
+      prefix = env["prefix"]
+      return File.expand_path(root) if rel == prefix
+
+      if rel.start_with?(prefix + File::SEPARATOR)
+        return File.join(File.expand_path(root), rel.delete_prefix(prefix + File::SEPARATOR))
+      end
+
+      File.join(Dir.home, rel)
+    end
+
+    def harness_homes(harness_id)
+      adapter(harness_id)["detect"].map { |rel| harness_path(harness_id, rel) }
+    end
+
     def harness_home(harness_id)
-      File.join(Dir.home, ADAPTERS.fetch(harness_id)["home"])
+      homes = harness_homes(harness_id)
+      homes.find { |dir| Dir.exist?(dir) } || homes.first
+    end
+
+    def installed?(harness_id)
+      harness_homes(harness_id).any? { |dir| Dir.exist?(dir) }
     end
 
     def installed_harnesses
-      ADAPTERS.keys.select { |id| Dir.exist?(harness_home(id)) }
+      ADAPTERS.keys.select { |id| installed?(id) }
     end
 
     def ensure_present!(harness_id)
-      unless ADAPTERS.key?(harness_id)
-        raise Error, "unknown harness '#{harness_id}' (supported: #{ADAPTERS.keys.join(', ')})"
-      end
+      ensure_known!(harness_id)
+      return if installed?(harness_id)
 
-      home = harness_home(harness_id)
-      unless Dir.exist?(home)
-        raise Error, "harness #{harness_id} does not appear to be installed (missing #{home})"
-      end
+      raise Error, "harness #{harness_id} does not appear to be installed " \
+                   "(missing #{harness_homes(harness_id).join(', ')})"
+    end
+
+    def ensure_known!(harness_id)
+      return if ADAPTERS.key?(harness_id)
+
+      raise Error, "unknown harness '#{harness_id}' (supported: #{ADAPTERS.keys.join(', ')})"
     end
 
     # ---- expected gap links ---------------------------------------------------
 
-    def active_agents(state)
+    def active_components(state, section)
       names = []
       state.profile_plugins.each_value do |entry|
-        agents = entry.dig("components", "agents") || {}
-        agents.each { |name, info| names << name if info["active"] }
+        (entry.dig("components", section) || {}).each do |name, info|
+          names << name if info["active"]
+        end
       end
       names.uniq
     end
 
+    def active_agents(state)
+      active_components(state, "agents")
+    end
+
+    def agents_md_path
+      File.join(Paths.agents_home, "agents.md")
+    end
+
+    def mcp_json_path
+      File.join(Paths.agents_home, "mcp.json")
+    end
+
+    # Harnesses that read ~/.agents/AGENTS.md match the name byte for byte,
+    # so the composed lowercase agents.md is invisible to them on a
+    # case-sensitive filesystem. Probe the skeleton's skills/ directory
+    # under a spelling clpr never creates: if SKILLS resolves too, the
+    # filesystem folds case and the alias would be pointless.
+    def case_sensitive_agents_home?
+      skills = Paths.agents_section("skills")
+      return false unless Dir.exist?(skills)
+
+      !Dir.exist?(File.join(Paths.agents_home, "SKILLS"))
+    end
+
     def expected_links(state, harness_id)
-      case harness_id
-      when "omp"
-        active_agents(state).each_with_object({}) do |name, map|
-          target = File.join(harness_home("omp"), "agent", "agents", "#{name}.md")
-          source = File.join(Paths.agents_section("agents"), name, "agent.md")
-          map[target] = source
+      bridge = adapter(harness_id)["bridge"] || {}
+      links = {}
+      agents_md = agents_md_path
+
+      if File.exist?(agents_md)
+        rel = bridge["instructions"]
+        links[harness_path(harness_id, rel)] = agents_md if rel
+        if bridge["uppercaseAgentsMd"] && case_sensitive_agents_home?
+          links[File.join(Paths.agents_home, "AGENTS.md")] = agents_md
         end
-      when "pi"
-        agents_md = File.join(Paths.agents_home, "agents.md")
-        if File.exist?(agents_md)
-          { File.join(harness_home("pi"), "agent", "AGENTS.md") => agents_md }
-        else
-          {}
-        end
-      else
-        {}
       end
+
+      if (rel = bridge["mcp"]) && File.exist?(mcp_json_path)
+        links[harness_path(harness_id, rel)] = mcp_json_path
+      end
+
+      if (rel = bridge["skills"])
+        dir = harness_path(harness_id, rel)
+        active_components(state, "skills").each do |name|
+          links[File.join(dir, name)] = File.join(Paths.agents_section("skills"), name)
+        end
+      end
+
+      if (spec = bridge["agents"])
+        dir = harness_path(harness_id, spec["dir"])
+        flat = spec["layout"] == "flat"
+        suffix = spec["suffix"] || ".md"
+        active_agents(state).each do |name|
+          source = File.join(Paths.agents_section("agents"), name)
+          if flat
+            links[File.join(dir, "#{name}#{suffix}")] = File.join(source, "agent.md")
+          else
+            links[File.join(dir, name)] = source
+          end
+        end
+      end
+
+      links
     end
 
     # ---- link / unlink / maintain ------------------------------------------------
@@ -70,7 +295,8 @@ module Tallmadge
     def link(state, harness_id = nil, force: false)
       targets = harness_id ? [harness_id] : installed_harnesses
       if targets.empty?
-        raise Error, "no supported harness installed (looked for ~/.omp and ~/.pi)"
+        looked = ADAPTERS.keys.flat_map { |id| harness_homes(id) }.uniq
+        raise Error, "no supported harness installed (looked for #{looked.join(', ')})"
       end
 
       targets.each do |hid|
@@ -82,15 +308,18 @@ module Tallmadge
     end
 
     def report_slot_notes(state, harness_id)
-      agent_count = active_agents(state).size
-      return unless agent_count.positive?
+      entry = adapter(harness_id)
+      native = (entry["native"] || []).map { |slot| NATIVE_LABELS[slot] }.compact
+      Reporter.info "#{harness_id}: reads #{native.join(' and ')} from ~/.agents natively" if native.any?
 
-      case harness_id
-      when "pi"
-        Reporter.info "pi has no subagent slot — #{agent_count} active agent(s) are not bridged"
-      when "omp"
-        Reporter.info "omp skills and agents.md are read natively; bridging #{agent_count} agent(s) as flat files"
+      bridge = entry["bridge"] || {}
+      agent_count = active_agents(state).size
+      if agent_count.positive? && bridge["agents"].nil?
+        Reporter.info "#{harness_id}: no markdown subagent slot — " \
+                      "#{agent_count} active agent(s) are not bridged"
       end
+
+      (entry["notes"] || []).each { |note| Reporter.info "#{harness_id}: #{note}" }
     end
 
     def unlink(state, harness_id)
@@ -100,7 +329,12 @@ module Tallmadge
         raise Error, "harness #{harness_id} is not linked by tallmadge"
       end
 
-      (entry["links"] || {}).each { |target, source| remove_recorded(target, source, true) }
+      keep = shared_targets(state, harness_id)
+      (entry["links"] || {}).each do |target, source|
+        next if keep.include?(target)
+
+        remove_recorded(target, source, true)
+      end
       state.harnesses.delete(harness_id)
       state.save
       Reporter.ok "unlinked #{harness_id}"
@@ -114,10 +348,16 @@ module Tallmadge
       end
     end
 
-    def ensure_known!(harness_id)
-      return if ADAPTERS.key?(harness_id)
+    # Targets another linked harness still expects, so tearing one bridge
+    # down never removes a link a sibling harness depends on (the shared
+    # ~/.agents/AGENTS.md alias, for instance).
+    def shared_targets(state, harness_id)
+      state.harnesses.keys.each_with_object(Set.new) do |other, set|
+        next if other == harness_id
+        next unless ADAPTERS.key?(other)
 
-      raise Error, "unknown harness '#{harness_id}' (supported: #{ADAPTERS.keys.join(', ')})"
+        set.merge(expected_links(state, other).keys)
+      end
     end
 
     # Called by the Activator after every activate/deactivate: refresh links
@@ -125,7 +365,7 @@ module Tallmadge
     def maintain!(state)
       state.harnesses.each_key do |harness_id|
         next unless ADAPTERS.key?(harness_id)
-        next unless Dir.exist?(harness_home(harness_id))
+        next unless installed?(harness_id)
 
         sync!(state, harness_id, force: false, report: false)
       end
@@ -139,8 +379,11 @@ module Tallmadge
       }
       recorded = entry["links"] || {}
       expected = expected_links(state, harness_id)
+      keep = shared_targets(state, harness_id)
 
       (recorded.keys - expected.keys).each do |target|
+        next if keep.include?(target)
+
         remove_recorded(target, recorded[target], report)
       end
 
@@ -345,22 +588,35 @@ module Tallmadge
       errors
     end
 
+    # One line per detected harness: what it reads from ~/.agents by itself,
+    # what clpr can bridge, and what no symlink can reach.
     def report_native_support
-      omp_bridge = File.join(Dir.home, ".omp", "agent", "skills")
-      if File.symlink?(omp_bridge)
-        Reporter.info "~/.omp/agent/skills -> #{File.readlink(omp_bridge)}: native skills " \
-                      "bridge already present, no action needed"
+      detected = installed_harnesses
+      if detected.empty?
+        Reporter.info "no supported harness detected"
+        return
       end
-      if Dir.exist?(harness_home("omp"))
-        Reporter.info "omp: reads ~/.agents/AGENTS.md and ~/.agents/skills natively; " \
-                      "subagents bridged as flat files in ~/.omp/agent/agents/; " \
-                      "tasks/memories/mcp.json are not read by omp"
+
+      detected.each do |id|
+        entry = adapter(id)
+        native = (entry["native"] || []).map { |slot| NATIVE_LABELS[slot] }.compact
+        bridged = bridged_slots(id)
+        Reporter.info "#{id} (#{entry['label']}): " \
+                      "native #{native.empty? ? 'nothing' : native.join(', ')}; " \
+                      "bridged #{bridged.empty? ? 'nothing' : bridged.join(', ')}"
+        (entry["notes"] || []).each { |note| Reporter.info "  #{note}" }
       end
-      if Dir.exist?(harness_home("pi"))
-        Reporter.info "pi: reads ~/.agents/skills natively; global context bridged via " \
-                      "~/.pi/agent/AGENTS.md; pi has no subagent slot; mcp.json is not read by pi"
-      end
+    end
+
+    def bridged_slots(harness_id)
+      bridge = adapter(harness_id)["bridge"] || {}
+      slots = []
+      slots << "agents.md" if bridge["instructions"]
+      slots << "AGENTS.md casing" if bridge["uppercaseAgentsMd"]
+      slots << "skills" if bridge["skills"]
+      slots << "agents" if bridge["agents"]
+      slots << "mcp.json" if bridge["mcp"]
+      slots
     end
   end
 end
-
