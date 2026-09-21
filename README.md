@@ -179,7 +179,22 @@ Bridges are plain symlinks and are maintained automatically: every `activate`, `
 
 ---
 
+### Repo Bridging (`clpr repo check` & `clpr repo link`)
+
+For a git repository that keeps its standards in the canonical layout — a real `AGENTS.md` at the root, skills in `.agents/skills/`, subagents in `.agents/agents/` — these commands make that content work for every coding agent your teammates use:
+
+- **`clpr repo check [DIR]`**: audit the repo's agent files and bridge links (invalid frontmatter, missing instruction aliases, broken or conflicting bridges) and report what each detected harness reads natively versus what can be bridged. Exits 1 on errors, so it works as a CI gate.
+- **`clpr repo link [DIR]`**: bridge the canonical layout into each harness's repo-level config directory (`CLAUDE.md → AGENTS.md`, `.claude/skills → ../.agents/skills`, and so on). Dry run by default; pass `--execute` to create the links, `--harness ID` to bridge exactly one harness (creating its config dir if absent).
+
+By default both commands cover the harnesses already detected in the repo. Existing files are never deleted or overwritten — a target that exists but isn't the expected link is reported as a conflict to consolidate manually. Links are relative and committable (git mode 120000), so the whole team inherits them on clone.
+
+Repo-level bridging covers claude, cursor, cline, gemini, kilo, opencode, copilot, and omp; devin and pi read `.agents/` natively at repo scope too. Codex (TOML agents), Amp (TypeScript plugin agents), and Cline agents (YAML) are format-locked and reported as maintain-manually instead.
+
+---
+
 ## Harness Support
+
+At repo scope, `clpr repo link` applies the same idea to a project's own `.agents/` layout (see [Repo Bridging](#repo-bridging-clpr-repo-check--clpr-repo-link) above).
 
 `~/.agents/skills/` has effectively won: every harness below except Claude Code loads skills straight out of it, so clpr does not touch their skill directories. Global instructions, subagents, and MCP are where the fragmentation still lives, and that is what `clpr link` bridges.
 
