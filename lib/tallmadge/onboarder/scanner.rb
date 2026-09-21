@@ -8,7 +8,11 @@ module Tallmadge
     # harness configurations (MCP servers, marketplaces, plugins).
     # Returns plain findings hashes; does not mutate state.
     module Scanner
-      # Harness name -> candidate MCP config paths (relative to ~).
+      # Harness name -> candidate MCP config paths (relative to ~). A file
+      # belongs here only when its servers use the {"mcpServers": {...}}
+      # shape, or a namespaced key holding that same shape (Amp). Kilo,
+      # opencode, and Codex nest servers differently and would import as
+      # garbage.
       HARNESS_MCP_PATHS = {
         "Claude" => [
           File.join("Library", "Application Support", "Claude", "claude_desktop_config.json"),
@@ -19,13 +23,33 @@ module Tallmadge
           File.join(".cursor", "mcp.json"),
           File.join("Library", "Application Support", "Cursor", "mcp.json")
         ],
-        "Cline/Roo" => [
+        "Cline" => [
+          # Current shared location for the extension, CLI, and SDK.
+          File.join(".cline", "data", "settings", "cline_mcp_settings.json"),
+          # Pre-migration VS Code global storage copies.
           File.join("Library", "Application Support", "Code", "User", "globalStorage",
                      "saoudrizwan.claude-dev", "settings", "cline_mcp_settings.json"),
           File.join(".config", "Code", "User", "globalStorage",
-                     "saoudrizwan.claude-dev", "settings", "cline_mcp_settings.json"),
+                     "saoudrizwan.claude-dev", "settings", "cline_mcp_settings.json")
+        ],
+        "Roo" => [
           File.join("Library", "Application Support", "Code", "User", "globalStorage",
                      "rooveterinaryinc.roo-cline", "settings", "cline_mcp_settings.json")
+        ],
+        "Devin" => [
+          File.join(".config", "devin", "mcp_config.json"),
+          # Pre-v3000.3 installs keep servers in the main config until
+          # Devin migrates them to mcp_config.json on startup.
+          File.join(".config", "devin", "config.json")
+        ],
+        "GitHub Copilot" => [
+          File.join(".copilot", "mcp-config.json")
+        ],
+        "Gemini CLI" => [
+          File.join(".gemini", "settings.json")
+        ],
+        "Amp" => [
+          File.join(".config", "amp", "settings.json")
         ],
         "Oh My Pi" => [
           File.join(".omp", "agent", "mcp.json")
@@ -245,7 +269,8 @@ module Tallmadge
         data = load_json_file(path)
         return {} unless data.is_a?(Hash)
 
-        servers = data["mcpServers"] || data["mcp_servers"]
+        # Amp keeps the same per-server shape under a namespaced key.
+        servers = data["mcpServers"] || data["mcp_servers"] || data["amp.mcpServers"]
         servers.is_a?(Hash) ? servers : {}
       end
 

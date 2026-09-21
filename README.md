@@ -17,7 +17,7 @@ The CLI binary is named **`clpr`** (*Culper*).
 1. **Global Plugin Store (`~/.tallmadge/store`)**: Installs plugins from local directories, git repositories, GitHub shorthand (`owner/repo`), marketplace catalogs (`plugin@marketplace`), or `.agents` Hub bundles.
 2. **Selective Activation (`~/.agents`)**: Symlinks active skills, agents, tasks, and memory files into standard `~/.agents/` subdirectories (`skills/`, `agents/`, `tasks/`, `memories/`).
 3. **Composed Files (`AGENTS.md` & `mcp.json`)**: Merges multiple plugin instructions and MCP server definitions alongside user-defined content without conflict.
-4. **Harness Bridging**: Bridges gaps for harnesses like `omp` and `pi` that read subsets of `~/.agents` or use proprietary configuration paths (`~/.omp/`, `~/.pi/`).
+4. **Harness Bridging**: Bridges the gaps for twelve coding harnesses (Cline, Kilo Code, Amp, Devin, Claude Code, Codex, opencode, Gemini CLI, Cursor, Copilot CLI, `omp`, `pi`) that read only part of `~/.agents` or keep their own configuration elsewhere (`~/.claude/`, `~/.config/kilo/`, `~/.cline/`, …). See [Harness Support](#harness-support).
 5. **Switchable Profiles**: Create named profiles (e.g., `work`, `personal`) to instantly switch active plugins, marketplaces, adopted `AGENTS.md` fragments, and MCP servers without reinstalling.
 
 ---
@@ -55,7 +55,7 @@ clpr setup
 clpr init --onboard
 ```
 
-This safely checks if you already have an existing `~/.agents` directory, creates a timestamped backup in `~/.tallmadge/backups/`, imports custom components as plugins — grouping skills that came from the same source (symlinked from one checkout) or that share a name family (`caveman`, `caveman-commit`, … → one `caveman` plugin) into a single plugin — scans and imports external MCP server configurations (from Claude, Cursor, Cline/Roo, Oh My Pi) and marketplaces, with deduplication across all sources.
+This safely checks if you already have an existing `~/.agents` directory, creates a timestamped backup in `~/.tallmadge/backups/`, imports custom components as plugins — grouping skills that came from the same source (symlinked from one checkout) or that share a name family (`caveman`, `caveman-commit`, … → one `caveman` plugin) into a single plugin — scans and imports external MCP server configurations (Claude, Cursor, Cline, Roo, Devin, GitHub Copilot, Gemini CLI, Amp, Oh My Pi) and marketplaces, with deduplication across all sources.
 
 To remove Tallmadge management and restore your original `~/.agents` backup:
 
@@ -169,9 +169,43 @@ Profiles manage switchable subsets of installed plugins, marketplaces, and user 
 
 ### Harness Gap Bridging (`clpr link` & `clpr doctor`)
 
-- **`clpr link [harness]`**: Bridge gap links for installed harnesses (`omp`, `pi`).
-- **`clpr unlink <harness>`**: Remove bridge links for a harness.
-- **`clpr doctor`**: Audit symlinks, composed files, and harness configurations for issues.
+- **`clpr link [harness]`**: Bridge gap links for every detected harness, or just the one you name.
+- **`clpr unlink <harness>`**: Remove bridge links for a harness. Links a *different* linked harness still needs (such as the shared `AGENTS.md` alias) are left in place.
+- **`clpr doctor`**: Audit symlinks, composed files, and harness configurations for issues, and print what each detected harness reads natively versus what clpr bridges.
+
+`clpr refresh` notices harnesses installed since the last run and offers to bridge them; it asks first, because linking writes into each harness's own config directory. Answer no (or run `clpr link HARNESS` later) to keep them untouched.
+
+Bridges are plain symlinks and are maintained automatically: every `activate`, `deactivate`, and profile switch re-syncs them, so a harness only ever sees the components active in the current profile.
+
+---
+
+## Harness Support
+
+`~/.agents/skills/` has effectively won: every harness below except Claude Code loads skills straight out of it, so clpr does not touch their skill directories. Global instructions, subagents, and MCP are where the fragmentation still lives, and that is what `clpr link` bridges.
+
+| Harness | id | Reads from `~/.agents` natively | Bridged by `clpr link` | Not bridgeable |
+| --- | --- | --- | --- | --- |
+| Oh My Pi | `omp` | `agents.md`, `skills/` | subagents → `~/.omp/agent/agents/<name>.md` | tasks, memories, mcp.json (not read by omp) |
+| Pi | `pi` | `skills/` | `~/.pi/agent/AGENTS.md` | no subagent slot; mcp.json not read |
+| Cline | `cline` | `AGENTS.md`, `skills/` | `~/.cline/data/settings/cline_mcp_settings.json` | subagents (YAML `~/.cline/agents/<name>.yml`) |
+| Kilo Code | `kilo` | `skills/` | `~/.config/kilo/AGENTS.md`, `~/.config/kilo/agent/<name>.md` | MCP (`mcp` key inside `kilo.jsonc`) |
+| Amp | `amp` | `skills/` | `~/.config/amp/AGENTS.md` | subagents (TypeScript plugins), MCP (`amp.mcpServers` in `settings.json`) |
+| Devin CLI | `devin` | `skills/` | `~/.config/devin/AGENTS.md`, `agents/<name>/`, `mcp_config.json` | — (cloud Devin reads repo files only) |
+| Claude Code | `claude` | — | `~/.claude/CLAUDE.md`, `skills/<name>`, `agents/<name>.md` | MCP (`~/.claude.json` also holds app state) |
+| Codex CLI | `codex` | `skills/` | `~/.codex/AGENTS.md` | subagents and MCP (TOML in `~/.codex`) |
+| opencode | `opencode` | `skills/` | `~/.config/opencode/AGENTS.md`, `agent/<name>.md` | MCP (`mcp` key inside `opencode.json`) |
+| Gemini CLI | `gemini` | `skills/` | `~/.gemini/GEMINI.md`, `agents/<name>.md` | MCP (`mcpServers` in `settings.json`) |
+| Cursor CLI | `cursor` | `skills/` | `~/.cursor/mcp.json`, `agents/<name>.md` | global instructions (Cursor's User Rules live in its settings UI, not a file) |
+| GitHub Copilot CLI | `copilot` | `skills/` | `~/.copilot/copilot-instructions.md`, `agents/<name>.agent.md`, `mcp-config.json` | — |
+
+Notes:
+
+- **Filename casing.** Harnesses that read `~/.agents/AGENTS.md` (Cline, `omp`) stat that exact name, while clpr composes lowercase `agents.md`. On a case-sensitive filesystem `clpr link` adds an `AGENTS.md` → `agents.md` symlink; on macOS's case-insensitive default it is unnecessary and is skipped.
+- **MCP is only bridged where a harness reads a dedicated `{"mcpServers": {…}}` file.** Where servers live inside a larger config (Amp, Kilo, opencode, Gemini, Codex) or a file that also stores app state (Claude Code), a symlink would clobber unrelated settings, so clpr leaves it alone and says so in `clpr doctor`.
+- **A bridged MCP file is clpr's to own.** `cline mcp add` and `devin mcp add -s user` write into the very file clpr linked, so servers added that way are replaced on the next compose. Add them with `clpr mcp add` instead and every harness gets them.
+- **Relocated homes are honored**: `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `CLINE_DIR`, `COPILOT_HOME`, `CURSOR_CONFIG_DIR`, and `XDG_CONFIG_HOME` (Amp, Devin, Kilo, opencode).
+- **Cloud-only agents have nothing to bridge.** Devin's web app, Jules, and the GitHub Copilot coding agent read `AGENTS.md` from the repository, not from your home directory; commit one to your project instead. The `devin` adapter targets the local Devin CLI.
+- Paths above were verified against each harness's documentation or source in September 2026.
 
 ---
 

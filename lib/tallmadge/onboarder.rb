@@ -92,7 +92,7 @@ module Tallmadge
         handle_plugin_imports(plugin_findings, non_interactive: non_interactive, auto_yes: auto_yes)
       end
 
-      detect_and_link_new_harnesses
+      detect_and_link_new_harnesses(non_interactive: non_interactive, auto_yes: auto_yes)
 
       if @state.plugins.any? || @state.user_content["agentsMd"] || @state.user_content["mcpJson"]
         Activator.new(@state).apply_profile!
@@ -103,16 +103,26 @@ module Tallmadge
     end
 
     # Links harnesses installed since last setup/refresh and warns about
-    # previously linked harnesses that are no longer installed.
-    def detect_and_link_new_harnesses
+    # previously linked harnesses that are no longer installed. Linking
+    # writes symlinks into each harness's own config directory, so ask
+    # first unless the caller already accepted every prompt.
+    def detect_and_link_new_harnesses(non_interactive: false, auto_yes: false)
       installed = Harness.installed_harnesses
       linked = @state.harnesses.keys
+      fresh = installed - linked
 
-      (installed - linked).each do |hid|
-        Reporter.info "Newly detected harness: #{hid}"
-        Harness.link(@state, hid)
-      rescue Error => e
-        Reporter.err "Failed to link harness '#{hid}': #{e.message}"
+      if fresh.any?
+        Reporter.info "\nNewly detected harnesses: #{fresh.join(', ')}"
+        prompt = "Bridge their gaps with symlinks into their config directories?"
+        if auto_yes || (non_interactive ? true : prompt_yes_no(prompt, default: true))
+          fresh.each do |hid|
+            Harness.link(@state, hid)
+          rescue Error => e
+            Reporter.err "Failed to link harness '#{hid}': #{e.message}"
+          end
+        else
+          Reporter.info "Skipped; run `clpr link HARNESS` to bridge them later."
+        end
       end
 
       (linked - installed).each do |hid|
