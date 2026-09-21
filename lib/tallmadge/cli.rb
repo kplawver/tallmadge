@@ -24,6 +24,9 @@ module Tallmadge
     desc "mcp SUBCOMMAND", "Manage MCP servers in the composed mcp.json"
     subcommand "mcp", McpCLI
 
+    desc "repo SUBCOMMAND", "Audit and bridge agent files in a git repository"
+    subcommand "repo", RepoCLI
+
     def self.exit_on_failure?
       true
     end
