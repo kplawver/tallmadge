@@ -232,4 +232,91 @@ class RepoTest < Minitest::Test
     assert_match(/--harness ID/, out)
     refute File.exist?(File.join(root, "CLAUDE.md"))
   end
+
+  def test_link_all_bridges_undetected_harnesses
+    root = fixture_repo(harnesses: [])
+
+    run_repo_link(root, all: true, execute: true)
+
+    assert File.symlink?(File.join(root, "CLAUDE.md"))
+    assert_equal "../.agents/skills", File.readlink(File.join(root, ".claude", "skills"))
+    assert_equal "../.agents/agents", File.readlink(File.join(root, ".claude", "agents"))
+    assert_equal "../.agents/agents", File.readlink(File.join(root, ".cursor", "agents"))
+    assert_equal "AGENTS.md", File.readlink(File.join(root, "GEMINI.md"))
+    # copilot gets per-agent flat links even though .github/agents never existed
+    assert_equal "../../.agents/agents/reviewer/agent.md",
+                 File.readlink(File.join(root, ".github", "agents", "reviewer.agent.md"))
+    # cline's agents are not bridgeable, but its skills are
+    assert_equal "../.agents/skills", File.readlink(File.join(root, ".cline", "skills"))
+    refute File.exist?(File.join(root, ".cline", "agents"))
+    # harnesses with nothing bridgeable (codex, amp, devin, pi) create no dirs
+    refute File.exist?(File.join(root, ".codex"))
+    refute File.exist?(File.join(root, ".amp"))
+    refute File.exist?(File.join(root, ".devin"))
+    refute File.exist?(File.join(root, ".pi"))
+  end
+
+  def test_check_reports_dangling_canonical_symlinks
+    root = fixture_repo
+    rm_skills = File.join(root, ".agents", "skills")
+    FileUtils.remove_entry(rm_skills)
+    File.symlink("definitely-not-here", rm_skills)
+
+    out, = run_repo_check(root)
+    assert_match(%r{\.agents/skills is a broken symlink \(points at definitely-not-here\)}, out)
+    assert_match(/1 error\(s\), /, out)
+  end
+
+  def test_check_working_symlinked_skills_dir_is_healthy
+    root = fixture_repo
+    shared = File.join(root, "shared-skills")
+    FileUtils.mv(File.join(root, ".agents", "skills"), shared)
+    File.symlink("../shared-skills", File.join(root, ".agents", "skills"))
+
+    out, = run_repo_check(root)
+    refute_match(/no \.agents\/skills directory/, out)
+    refute_match(/broken symlink/, out)
+  end
+
+  def test_check_dangling_agents_md_is_error_not_missing
+    root = fixture_repo
+    agents_md = File.join(root, "AGENTS.md")
+    File.unlink(agents_md)
+    File.symlink("elsewhere.md", agents_md)
+
+    out, = run_repo_check(root)
+    assert_match(/AGENTS\.md is a broken symlink \(points at elsewhere\.md\)/, out)
+    assert_match(/1 error\(s\), /, out)
+  end
+
+  def test_check_dangling_agents_dir_symlink_is_error
+    root = fixture_repo
+    FileUtils.remove_entry(File.join(root, ".agents", "agents"))
+    File.symlink("not-here", File.join(root, ".agents", "agents"))
+
+    out, = run_repo_check(root)
+    assert_match(%r{\.agents/agents is a broken symlink \(points at not-here\)}, out)
+    assert_match(/1 error\(s\), /, out)
+  end
+
+  def test_link_all_conflicts_with_specific_harness
+    root = fixture_repo
+
+    error = assert_raises(Tallmadge::Error) { run_repo_link(root, all: true, harnesses: "claude") }
+    assert_match(/cannot combine 'all' with a specific harness/, error.message)
+  end
+
+  def test_cli_link_all_flag
+    root = fixture_repo(harnesses: %w[.claude])
+
+    capture_io do
+      begin
+        Tallmadge::CLI.start(["repo", "link", root, "--all", "--execute"])
+      rescue SystemExit
+        nil
+      end
+    end
+    assert File.symlink?(File.join(root, ".cursor", "agents"))
+    assert File.symlink?(File.join(root, "CLAUDE.md"))
+  end
 end

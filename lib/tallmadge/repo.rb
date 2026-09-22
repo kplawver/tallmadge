@@ -224,6 +224,13 @@ module Tallmadge
       :missing
     end
 
+    # True when path is a symlink whose target doesn't exist (a committed
+    # link whose destination is missing on this machine). Dir.exist?
+    # returns false for these, so checks report them as absent.
+    def dangling?(path)
+      File.symlink?(path) && !File.exist?(path)
+    end
+
     # Prints the audit report; returns the error count (check exits 1 on
     # any error, so it can gate CI).
     def check(dir)
@@ -264,7 +271,7 @@ module Tallmadge
       end
       unless bridgeable.empty?
         Reporter.info "not detected in this repo: #{bridgeable.join(', ')} " \
-                      "(bridge with: clpr repo link --harness ID)"
+                      "(bridge with: clpr repo link --harness ID, or --all for every supported harness)"
       end
 
       if Gem.win_platform? && !links.empty?
@@ -309,7 +316,11 @@ module Tallmadge
         end
       else
         alias_present = %w[CLAUDE.md GEMINI.md].any? { |n| File.file?(File.join(repo_root, n)) }
-        if alias_present
+        if dangling?(agents_md)
+          Reporter.err "#{rel(repo_root, agents_md)} is a broken symlink (points at " \
+                       "#{File.readlink(agents_md)}) — fix or remove it"
+          errors += 1
+        elsif alias_present
           Reporter.warn "AGENTS.md missing — some harnesses read it natively; " \
                         "symlink it to your instructions file"
           yield true
@@ -346,12 +357,20 @@ module Tallmadge
       agents_dir = File.join(repo_root, ".agents", "agents")
       if Dir.exist?(skills_dir)
         errors += check_skill_frontmatter(skills_dir)
+      elsif dangling?(skills_dir)
+        Reporter.err ".agents/skills is a broken symlink (points at #{File.readlink(skills_dir)}) — " \
+                     "fix or remove it"
+        errors += 1
       else
         Reporter.warn "no .agents/skills directory"
         yield true
       end
       if Dir.exist?(agents_dir)
         errors += check_agent_frontmatter(agents_dir)
+      elsif dangling?(agents_dir)
+        Reporter.err ".agents/agents is a broken symlink (points at #{File.readlink(agents_dir)}) — " \
+                     "fix or remove it"
+        errors += 1
       else
         Reporter.warn "no .agents/agents directory"
         yield true
@@ -409,20 +428,20 @@ module Tallmadge
 
     # Show (dry run, default) or create the bridge links. :conflict links
     # are always skipped — never backed up, never overwritten.
-    def link(dir, harnesses: nil, execute: false)
+    # harnesses: nil means "detected in the repo"; all: true means every
+    # supported harness (for teams whose members don't all have every
+    # agent installed).
+    def link(dir, harnesses: nil, execute: false, all: false)
+      if all && harnesses
+        raise Error, "cannot combine 'all' with a specific harness (#{harnesses})"
+      end
       repo_root = find_root(dir)
-      targets =
-        if harnesses
-          [harnesses]
-        else
-          detected(repo_root)
-        end
+      targets = all ? REPO_BRIDGES.keys : (harnesses ? [harnesses] : detected(repo_root))
       if targets.empty?
         Reporter.info "no supported harness detected in this repo — " \
-                      "use --harness ID to bridge one explicitly"
+                      "use --harness ID to bridge one explicitly, or --all for every supported harness"
         return
       end
-
       links = plan(repo_root, targets)
       created = 0
       skipped = 0
@@ -472,8 +491,9 @@ module Tallmadge
     desc "link [DIR]", "Show (dry run) or create symlink bridges for a repo's agent files (default: cwd)"
     option :execute, type: :boolean, desc: "Create the links (default is dry run)"
     option :harness, desc: "Bridge only this harness id (default: all detected in the repo)"
+    option :all, type: :boolean, desc: "Bridge every supported harness, detected or not (team repos)"
     def link(dir = Dir.pwd)
-      Repo.link(dir, harnesses: options[:harness], execute: options[:execute])
+      Repo.link(dir, harnesses: options[:harness], execute: options[:execute], all: options[:all])
     end
   end
 end
