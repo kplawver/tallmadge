@@ -273,7 +273,8 @@ module Tallmadge
         skills = Skills.user_skill_names(state)
         Reporter.warn "#{owned.join(', ')} holds skills you created (#{skills.join(', ')}); " \
                       "uninstalling deletes them permanently"
-        raise Error, "aborted; nothing was deleted" unless yes?("Continue? [y/N]")
+        $stdout.print "Continue? [y/N] "
+        raise Error, "aborted; nothing was deleted" unless $stdin.gets.to_s.strip.downcase.start_with?("y")
       end
     end
   end
