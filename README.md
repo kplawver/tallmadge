@@ -95,10 +95,11 @@ clpr restore --from ~/.tallmadge/backups/YYYYMMDDTHHMMSSZ-agents-backup
 
 ### User Content Files
 
-- **`clpr edit FILE`**: Open your user copy of a composed file (`agents.md` or `mcp.json`) in the OS default application for it; creates the file and registers it in the current profile if it doesn't exist.
+- **`clpr edit FILE_OR_SKILL`**: Open your user copy of a composed file (`agents.md` or `mcp.json`), or a skill you created with `clpr skill new`, in the OS default application; creates the composed file and registers it in the current profile if it doesn't exist.
   ```bash
   clpr edit agents.md   # create/open your instructions fragment
   clpr edit mcp.json    # create/open your personal MCP servers
+  clpr edit my-skill    # open a skill you created (edits are live; no rebuild needed)
   ```
   Saved changes flow into the composed `~/.agents/agents.md` / `mcp.json` on the next rebuild (any `activate`, `deactivate`, or profile switch).
 
@@ -154,6 +155,8 @@ Profiles manage switchable subsets of installed plugins, marketplaces, and user 
 ### Single Skill Management (`clpr skill`)
 
 - **`clpr skill activate <name>`**: Locate the owner plugin and activate a single skill by name.
+- **`clpr skill new <name> [-d DESCRIPTION]`**: Create a skill you own. It is scaffolded in the `user-skills` plugin (source type `user`, shown as "created by you" in `clpr list`/`clpr update`), activated immediately, and opened for editing. Reopen it any time with `clpr edit <name>`.
+- **`clpr skill delete <name>`**: Permanently delete a skill you created (deactivates it and removes its files). Skills from other plugins are refused. `clpr uninstall user-skills` removes all of them and asks for confirmation first (`--yes` skips the prompt).
 - **`clpr skill deactivate <name>`**: Deactivate a specific skill by name.
 - **`clpr skills`**: View a global table of all installed skills across all plugins and their active status.
 

@@ -143,6 +143,10 @@ module Tallmadge
       existing = @state.plugins[id]
       return nil unless existing
 
+      if existing.dig("source", "type") == "user"
+        raise Error, "plugin '#{id}' holds skills you created; installing over it would erase them"
+      end
+
       unless force
         raise Error, "plugin '#{id}' is already installed (use --force to replace)"
       end
@@ -185,7 +189,7 @@ module Tallmadge
       pairs
     end
 
-    def finish(id, source, prior_active)
+    def finish(id, source, prior_active, report: true)
       dir = Paths.plugin_dir(id)
       scan = Store.scan(dir)
       now = Time.now.utc.iso8601
@@ -209,7 +213,10 @@ module Tallmadge
         scan["components"].each do |section, items|
           if section == "agentsMd"
             old_item = old_components["agentsMd"]
-            new_components["agentsMd"] = old_item ? State.deep_dup(old_item) : { "active" => false }
+            new_components["agentsMd"] = nil
+            if items
+              new_components["agentsMd"] = old_item ? State.deep_dup(old_item) : { "active" => false }
+            end
           else
             new_components[section] = {}
             items.each_key do |name|
@@ -221,7 +228,7 @@ module Tallmadge
 
         old_components.each do |section, items|
           if section == "agentsMd"
-            dropped << "agents.md" unless scan["components"]["agentsMd"]
+            dropped << "agents.md" if items && !scan["components"]["agentsMd"]
           elsif items.is_a?(Hash)
             items.each_key do |name|
               dropped << "#{section}:#{name}" unless scan["components"].dig(section, name)
@@ -239,7 +246,7 @@ module Tallmadge
       @state.ensure_profile_plugin!(id)
 
       @state.save
-      report_install(id, @state.plugins[id])
+      report_install(id, @state.plugins[id]) if report
 
       if prior_active && !prior_active.empty?
         available = Installer.available_pairs(@state.plugins[id])
@@ -262,6 +269,7 @@ module Tallmadge
       suffix = case src["type"]
                when "git" then " (git #{(src['sha'] || 'HEAD')[0, 7]})"
                when "path" then " (path #{src['path']})"
+               when "user" then " (your skills)"
                when "marketplace" then " (marketplace #{src['marketplace']})"
                when "hub" then " (hub bundle v#{src['bundleVersion']})"
                else ""

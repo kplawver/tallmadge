@@ -55,6 +55,7 @@ module Tallmadge
         when :outdated then Rainbow("update available").yellow.to_s
         when :unknown then Rainbow("unknown").yellow.to_s
         when :manual then Rainbow("local path — update manually").faint.to_s
+        when :yours then Rainbow("created by you").faint.to_s
         end
       [id, installed, latest.to_s.empty? ? "-" : latest.to_s, status_text]
     end
@@ -90,6 +91,7 @@ module Tallmadge
       when "marketplace" then check_marketplace(state, entry)
       when "hub" then check_hub(entry)
       when "path" then [:manual, nil]
+      when "user" then [:yours, nil]
       else [:unknown, nil]
       end
     end

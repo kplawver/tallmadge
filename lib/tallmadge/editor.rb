@@ -1,9 +1,10 @@
 # frozen_string_literal: true
 
 module Tallmadge
-  # Opens user-content files (agents.md, mcp.json) in whatever application
-  # the OS associates with them. Missing files are created and registered
-  # first, so `clpr edit agents.md` doubles as "add a new file to the store".
+  # Opens user-content files (agents.md, mcp.json) and user-authored skills
+  # in whatever application the OS associates with them. Missing files are
+  # created and registered first, so `clpr edit agents.md` doubles as
+  # "add a new file to the store".
   module Editor
     # CLI filename -> state userContent key.
     FILES = {
@@ -15,13 +16,26 @@ module Tallmadge
 
     def edit(state, name)
       filename = FILES.keys.find { |f| f.casecmp?(name.to_s) }
-      raise Error, "cannot edit '#{name}' (editable files: #{FILES.keys.join(', ')})" unless filename
+      return edit_user_skill(state, name) unless filename
 
       path = ensure_user_file!(state, FILES[filename], filename)
       open_with_default_app(path)
       Reporter.ok "opened #{path}"
       Reporter.info Reporter.dim("changes appear in #{File.join(Paths.agents_home, filename)} " \
                                  "after the next rebuild (activate, deactivate, or profile switch)")
+    end
+
+    # Skills are symlinked from the store, so saved edits are live at once.
+    def edit_user_skill(state, name)
+      path = Skills.user_skill_file(state, name.to_s)
+      unless path
+        skills = Skills.user_skill_names(state)
+        hint = skills.empty? ? "" : "; your skills: #{skills.join(', ')}"
+        raise Error, "cannot edit '#{name}' (editable files: #{FILES.keys.join(', ')}#{hint})"
+      end
+
+      open_with_default_app(path)
+      Reporter.ok "opened #{path}"
     end
 
     # Returns the absolute path to the user's copy, creating it when absent.
