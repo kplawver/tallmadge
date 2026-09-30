@@ -12,6 +12,143 @@ class EditorTest < Minitest::Test
     end
   end
 
+  def run_cli_with_stdin(input, *args)
+    $stdin = StringIO.new(input)
+    capture_io do
+      Tallmadge::CLI.start(args)
+    rescue SystemExit
+      nil
+    end
+  ensure
+    $stdin = STDIN
+  end
+
+  def test_uninstall_with_user_skills_among_ids_aborts_before_removing_anything
+    write(home("fixture", "skills", "theirs", "SKILL.md"), skill_md(name: "theirs"))
+    capture_io do
+      Tallmadge::Installer.new(state).install_path(home("fixture"), as: "vendor")
+      Tallmadge::Skills.create_user_skill!(state, "mine")
+    end
+
+    run_cli_with_stdin("n\n", "uninstall", "vendor", "user-skills")
+
+    assert Dir.exist?(store("vendor"))
+    assert Dir.exist?(store("user-skills"))
+  end
+
+  def test_uninstall_with_no_answer_keeps_user_skills
+    capture_io { Tallmadge::Skills.create_user_skill!(state, "mine") }
+
+    run_cli_with_stdin("", "uninstall", "user-skills")
+
+    assert Dir.exist?(store("user-skills"))
+  end
+
+  def test_creating_and_deleting_skills_never_warns_about_agents_md
+    out, err = capture_io do
+      %w[one two three].each { |name| Tallmadge::Skills.create_user_skill!(state, name) }
+      Tallmadge::Skills.delete_user_skill!(state, "two")
+    end
+
+    refute_match(/agents\.md/, out + err)
+  end
+
+  def test_delete_removes_only_the_named_user_skill
+    capture_io do
+      Tallmadge::Skills.create_user_skill!(state, "keep")
+      Tallmadge::Skills.create_user_skill!(state, "drop")
+      Tallmadge::Skills.delete_user_skill!(state, "drop")
+    end
+
+    refute File.exist?(store("user-skills", "skills", "drop"))
+    refute File.symlink?(agents("skills", "drop"))
+    assert File.symlink?(agents("skills", "keep"))
+    assert_equal %w[keep], Tallmadge::Skills.user_skill_names(state)
+  end
+
+  def test_delete_rejects_skills_not_created_by_the_user
+    write(home("fixture", "skills", "theirs", "SKILL.md"), skill_md(name: "theirs"))
+    capture_io { Tallmadge::Installer.new(state).install_path(home("fixture"), as: "vendor") }
+
+    error = assert_raises(Tallmadge::Error) { Tallmadge::Skills.delete_user_skill!(state, "theirs") }
+    assert_match(/no skill you created/, error.message)
+    assert File.exist?(store("vendor", "skills", "theirs", "SKILL.md"))
+  end
+
+  def test_uninstall_user_skills_warns_and_aborts_unless_confirmed
+    capture_io { Tallmadge::Skills.create_user_skill!(state, "mine") }
+
+    out, err = run_cli_with_stdin("n\n", "uninstall", "user-skills")
+    assert_match(/deletes them permanently/, out + err)
+    assert File.exist?(store("user-skills", "skills", "mine", "SKILL.md"))
+
+    run_cli_with_stdin("y\n", "uninstall", "user-skills")
+    refute Dir.exist?(store("user-skills"))
+  end
+
+  def test_uninstall_user_skills_with_yes_skips_the_warning
+    capture_io { Tallmadge::Skills.create_user_skill!(state, "mine") }
+
+    out, err = run_cli_with_stdin("", "uninstall", "user-skills", "--yes")
+    refute_match(/permanently/, out + err)
+    refute Dir.exist?(store("user-skills"))
+  end
+
+  def test_new_skill_is_scaffolded_activated_and_tracked_as_user_owned
+    stub_open do
+      capture_io { Tallmadge::CLI.start(["skill", "new", "my-skill", "-d", "Does: things"]) }
+    end
+
+    skill_file = store("user-skills", "skills", "my-skill", "SKILL.md")
+    assert_equal skill_file, @opened_path
+    frontmatter = File.read(skill_file)[/\A---\n(.*?)\n---/m, 1]
+    assert_equal "Does: things", YAML.safe_load(frontmatter)["description"]
+    assert_equal({ "type" => "user" }, state.plugins["user-skills"]["source"])
+    assert File.symlink?(agents("skills", "my-skill"))
+    assert state.profile_plugins.dig("user-skills", "components", "skills", "my-skill", "active")
+  end
+
+  def test_second_new_skill_keeps_first_active
+    stub_open do
+      capture_io do
+        Tallmadge::CLI.start(["skill", "new", "first"])
+        Tallmadge::CLI.start(["skill", "new", "second"])
+      end
+    end
+
+    assert File.symlink?(agents("skills", "first"))
+    assert File.symlink?(agents("skills", "second"))
+  end
+
+  def test_new_skill_rejects_bad_and_duplicate_names
+    assert_raises(Tallmadge::Error) { Tallmadge::Skills.create_user_skill!(state, "Bad Name") }
+
+    capture_io { Tallmadge::Skills.create_user_skill!(state, "dup") }
+    error = assert_raises(Tallmadge::Error) { Tallmadge::Skills.create_user_skill!(state, "dup") }
+    assert_match(/already exists/, error.message)
+  end
+
+  def test_edit_opens_user_skill_by_name
+    capture_io { Tallmadge::Skills.create_user_skill!(state, "my-skill") }
+
+    stub_open do
+      capture_io { Tallmadge::Editor.edit(state, "my-skill") }
+    end
+
+    assert_equal store("user-skills", "skills", "my-skill", "SKILL.md"), @opened_path
+  end
+
+  def test_install_force_cannot_overwrite_user_skills
+    capture_io { Tallmadge::Skills.create_user_skill!(state, "mine") }
+    write(home("fixture", "SKILL.md"), skill_md)
+
+    error = assert_raises(Tallmadge::Error) do
+      capture_io { Tallmadge::Installer.new(state).install_path(home("fixture"), as: "user-skills", force: true) }
+    end
+    assert_match(/erase them/, error.message)
+    assert File.exist?(store("user-skills", "skills", "mine", "SKILL.md"))
+  end
+
   def test_edit_creates_missing_agents_md_and_registers_it
     stub_open do
       out, = capture_io do

@@ -15,7 +15,7 @@ module Tallmadge
     desc "hub SUBCOMMAND", "Browse and install .agents Hub bundles"
     subcommand "hub", HubCLI
 
-    desc "skill SUBCOMMAND", "Activate or deactivate a single skill by name"
+    desc "skill SUBCOMMAND", "Create, activate, or deactivate a single skill by name"
     subcommand "skill", SkillCLI
 
     desc "profile SUBCOMMAND", "Manage profiles (switchable plugin/marketplace/content sets)"
@@ -165,17 +165,21 @@ module Tallmadge
     end
 
     desc "uninstall ID ...", "Uninstall plugins (deactivates, then removes their store copies)"
+    option :yes, aliases: "-y", type: :boolean, desc: "Skip the warning when uninstalling your own skills"
     def uninstall(*ids)
       require_ids!(ids)
       state = State.load
       ids.each do |id|
-        unless state.plugins[id]
-          installed = state.plugins.keys
-          msg = "unknown plugin '#{id}'"
-          msg += " — installed: #{installed.join(', ')}" unless installed.empty?
-          raise Error, msg
-        end
+        next if state.plugins[id]
 
+        installed = state.plugins.keys
+        msg = "unknown plugin '#{id}'"
+        msg += " — installed: #{installed.join(', ')}" unless installed.empty?
+        raise Error, msg
+      end
+      confirm_user_skills_removal!(state, ids)
+
+      ids.each do |id|
         Activator.new(state).deactivate(id)
         FileUtils.rm_rf(Paths.plugin_dir(id))
         state.plugins.delete(id)
@@ -188,7 +192,7 @@ module Tallmadge
       end
     end
 
-    desc "edit FILE", "Open a user content file (agents.md, mcp.json) in your default app; creates it if missing"
+    desc "edit FILE_OR_SKILL", "Open a user content file (agents.md, mcp.json) or a skill you created in your default app; creates the file if missing"
     def edit(file)
       Editor.edit(State.load, file)
     end
@@ -232,6 +236,7 @@ module Tallmadge
         case src && src["type"]
         when "git" then "git #{src['url']} @ #{(src['sha'] || 'HEAD')[0, 7]}"
         when "path" then "path #{src['path']}"
+        when "user" then "created by you"
         when "marketplace"
           base = "marketplace #{src['marketplace']}/#{src['plugin']}"
           src["version"] ? "#{base} v#{src['version']}" : base
@@ -257,6 +262,19 @@ module Tallmadge
         raise Error, "no plugin id given" if ids.empty?
 
         ids
+      end
+
+      # Uninstalling a user-source plugin erases work that exists nowhere
+      # else. Checked once, before anything is removed; no answer means no.
+      def confirm_user_skills_removal!(state, ids)
+        owned = ids.select { |id| state.plugins[id].dig("source", "type") == "user" }
+        return if owned.empty? || options[:yes]
+
+        skills = Skills.user_skill_names(state)
+        Reporter.warn "#{owned.join(', ')} holds skills you created (#{skills.join(', ')}); " \
+                      "uninstalling deletes them permanently"
+        $stdout.print "Continue? [y/N] "
+        raise Error, "aborted; nothing was deleted" unless $stdin.gets.to_s.strip.downcase.start_with?("y")
       end
     end
   end
