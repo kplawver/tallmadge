@@ -189,6 +189,16 @@ class HarnessTest < Minitest::Test
     assert_equal [home(".config", "amp", "AGENTS.md")], links
   end
 
+  def test_zed_bridges_only_instructions_because_skills_are_native
+    FileUtils.mkdir_p(home(".config", "zed"))
+    install_full_plugin
+    capture_io { Tallmadge::Harness.link(state, "zed") }
+
+    links = state.harnesses.dig("zed", "links").keys
+    assert_equal [home(".config", "zed", "AGENTS.md")], links
+    assert_equal agents("agents.md"), File.readlink(home(".config", "zed", "AGENTS.md"))
+  end
+
   def test_kilo_bridges_instructions_and_agents_under_config_dir
     FileUtils.mkdir_p(home(".config", "kilo"))
     install_full_plugin

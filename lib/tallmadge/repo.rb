@@ -14,7 +14,7 @@ module Tallmadge
   # in CI against any clone.
   #
   # Bridge facts below were verified against each harness's docs or source
-  # in September 2026 — re-verify before changing a path, and never guess
+  # in September and October 2026 — re-verify before changing a path, and never guess
   # one.
   module Repo
     # One entry per harness id; all paths relative to the repo root.
@@ -92,6 +92,12 @@ module Tallmadge
       },
       "amp" => {
         "detect" => ".amp",
+        "instructions" => nil,
+        "skills" => nil,
+        "agents" => nil
+      },
+      "zed" => {
+        "detect" => ".zed",
         "instructions" => nil,
         "skills" => nil,
         "agents" => nil

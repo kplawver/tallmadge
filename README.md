@@ -19,7 +19,7 @@ The CLI binary is named **`clpr`** (*Culper*).
 1. **Global Plugin Store (`~/.tallmadge/store`)**: Installs plugins from local directories, git repositories, GitHub shorthand (`owner/repo`), marketplace catalogs (`plugin@marketplace`), or `.agents` Hub bundles.
 2. **Selective Activation (`~/.agents`)**: Symlinks active skills, agents, tasks, and memory files into standard `~/.agents/` subdirectories (`skills/`, `agents/`, `tasks/`, `memories/`).
 3. **Composed Files (`AGENTS.md` & `mcp.json`)**: Merges multiple plugin instructions and MCP server definitions alongside user-defined content without conflict.
-4. **Harness Bridging**: Bridges the gaps for twelve coding harnesses (Cline, Kilo Code, Amp, Devin, Claude Code, Codex, opencode, Gemini CLI, Cursor, Copilot CLI, `omp`, `pi`) that read only part of `~/.agents` or keep their own configuration elsewhere (`~/.claude/`, `~/.config/kilo/`, `~/.cline/`, …). See [Harness Support](#harness-support).
+4. **Harness Bridging**: Bridges the gaps for thirteen coding harnesses (Cline, Kilo Code, Amp, Devin, Claude Code, Codex, opencode, Zed, Gemini CLI, Cursor, Copilot CLI, `omp`, `pi`) that read only part of `~/.agents` or keep their own configuration elsewhere (`~/.claude/`, `~/.config/kilo/`, `~/.cline/`, `~/.config/zed/`, …). See [Harness Support](#harness-support).
 5. **Switchable Profiles**: Create named profiles (e.g., `work`, `personal`) to instantly switch active plugins, marketplaces, adopted `AGENTS.md` fragments, and MCP servers without reinstalling.
 
 ---
@@ -189,11 +189,11 @@ Bridges are plain symlinks and are maintained automatically: every `activate`, `
 For a git repository that keeps its standards in the canonical layout — a real `AGENTS.md` at the root, skills in `.agents/skills/`, subagents in `.agents/agents/` — these commands make that content work for every coding agent your teammates use:
 
 - **`clpr repo check [DIR]`**: audit the repo's agent files and bridge links (invalid frontmatter, missing instruction aliases, broken or conflicting bridges) and report what each detected harness reads natively versus what can be bridged. Exits 1 on errors, so it works as a CI gate.
-- **`clpr repo link [DIR]`**: bridge the canonical layout into each harness's repo-level config directory (`CLAUDE.md → AGENTS.md`, `.claude/skills → ../.agents/skills`, and so on). Dry run by default; pass `--execute` to create the links, `--harness ID` to bridge exactly one harness (creating its config dir if absent), or `--all` to bridge every supported harness whether or not it's detected — the right choice for a repo shared by a team, since the person running the command won't necessarily have every teammate's coding agents installed. Harnesses with no bridgeable links (codex, amp, devin, pi) are simply skipped.
+- **`clpr repo link [DIR]`**: bridge the canonical layout into each harness's repo-level config directory (`CLAUDE.md → AGENTS.md`, `.claude/skills → ../.agents/skills`, and so on). Dry run by default; pass `--execute` to create the links, `--harness ID` to bridge exactly one harness (creating its config dir if absent), or `--all` to bridge every supported harness whether or not it's detected — the right choice for a repo shared by a team, since the person running the command won't necessarily have every teammate's coding agents installed. Harnesses with no bridgeable links (codex, amp, devin, pi, zed) are simply skipped.
  
 By default both commands cover the harnesses already detected in the repo. Existing files are never deleted or overwritten — a target that exists but isn't the expected link is reported as a conflict to consolidate manually. Links are relative and committable (git mode 120000), so the whole team inherits them on clone.
 
-Repo-level bridging covers claude, cursor, cline, gemini, kilo, opencode, copilot, and omp; devin and pi read `.agents/` natively at repo scope too. Codex (TOML agents), Amp (TypeScript plugin agents), and Cline agents (YAML) are format-locked and reported as maintain-manually instead.
+Repo-level bridging covers claude, cursor, cline, gemini, kilo, opencode, copilot, and omp; devin, pi, and zed read `.agents/` natively at repo scope too. Codex (TOML agents), Amp (TypeScript plugin agents), and Cline agents (YAML) are format-locked and reported as maintain-manually instead.
 
 ---
 
@@ -214,6 +214,7 @@ At repo scope, `clpr repo link` applies the same idea to a project's own `.agent
 | Claude Code | `claude` | — | `~/.claude/CLAUDE.md`, `skills/<name>`, `agents/<name>.md` | MCP (`~/.claude.json` also holds app state) |
 | Codex CLI | `codex` | `skills/` | `~/.codex/AGENTS.md` | subagents and MCP (TOML in `~/.codex`) |
 | opencode | `opencode` | `skills/` | `~/.config/opencode/AGENTS.md`, `agent/<name>.md` | MCP (`mcp` key inside `opencode.json`) |
+| Zed | `zed` | `skills/` | `~/.config/zed/AGENTS.md` | MCP (`context_servers` in `settings.json`); subagents built-in (`spawn_agent`), not file-defined |
 | Gemini CLI | `gemini` | `skills/` | `~/.gemini/GEMINI.md`, `agents/<name>.md` | MCP (`mcpServers` in `settings.json`) |
 | Cursor CLI | `cursor` | `skills/` | `~/.cursor/mcp.json`, `agents/<name>.md` | global instructions (Cursor's User Rules live in its settings UI, not a file) |
 | GitHub Copilot CLI | `copilot` | `skills/` | `~/.copilot/copilot-instructions.md`, `agents/<name>.agent.md`, `mcp-config.json` | — |
@@ -225,7 +226,7 @@ Notes:
 - **A bridged MCP file is clpr's to own.** `cline mcp add` and `devin mcp add -s user` write into the very file clpr linked, so servers added that way are replaced on the next compose. Add them with `clpr mcp add` instead and every harness gets them.
 - **Relocated homes are honored**: `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `CLINE_DIR`, `COPILOT_HOME`, `CURSOR_CONFIG_DIR`, and `XDG_CONFIG_HOME` (Amp, Devin, Kilo, opencode).
 - **Cloud-only agents have nothing to bridge.** Devin's web app, Jules, and the GitHub Copilot coding agent read `AGENTS.md` from the repository, not from your home directory; commit one to your project instead. The `devin` adapter targets the local Devin CLI.
-- Paths above were verified against each harness's documentation or source in September 2026.
+- Paths above were verified against each harness's documentation or source in September and October 2026.
 
 ---
 

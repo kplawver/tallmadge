@@ -3,7 +3,7 @@
     {
       "name": "Tallmadge (clpr)",
       "tagline": "Package manager & environment switcher for AI coding agents",
-      "description": "Installs plugins into a global store, selectively activates skills, agents, and MCP servers into ~/.agents/, composes AGENTS.md and mcp.json, and bridges twelve coding harnesses — with switchable profiles on top.",
+      "description": "Installs plugins into a global store, selectively activates skills, agents, and MCP servers into ~/.agents/, composes AGENTS.md and mcp.json, and bridges thirteen coding harnesses — with switchable profiles on top.",
       "repo": "https://github.com/kplawver/tallmadge",
       "install": "brew install tallmadge",
       "tags": ["Ruby", "CLI", "Homebrew"]

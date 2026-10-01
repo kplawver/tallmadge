@@ -122,6 +122,17 @@ module Tallmadge
         },
         "notes" => ["MCP servers live under the mcp key of opencode.json — not bridged"]
       },
+      "zed" => {
+        "label" => "Zed",
+        "detect" => [".config/zed"],
+        "env" => { "var" => "XDG_CONFIG_HOME", "prefix" => ".config" },
+        "native" => %w[skills],
+        "bridge" => { "instructions" => ".config/zed/AGENTS.md" },
+        "notes" => [
+          "MCP servers live under context_servers in settings.json — not bridged",
+          "subagents are built-in (spawn_agent), not file-defined — not bridged"
+        ]
+      },
       "gemini" => {
         "label" => "Gemini CLI",
         "detect" => [".gemini"],
