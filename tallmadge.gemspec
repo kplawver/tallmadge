@@ -7,7 +7,7 @@ Gem::Specification.new do |spec|
   spec.version       = Tallmadge::VERSION
   spec.authors       = ["Kevin Lawver"]
   spec.summary       = "CLI manager for ~/.agents/ and AI coding harness extensions"
-  spec.homepage      = "https://github.com/kplawver/tallmadge"
+  spec.homepage      = "https://tallmadge.dev"
   spec.license       = "MIT"
   spec.required_ruby_version = ">= 3.0.0"
 

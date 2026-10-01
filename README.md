@@ -2,6 +2,8 @@
 
 **Tallmadge** (`clpr`) is a package manager and environment switcher for agent harnesses, skills, plugins, and marketplaces structured around the standard `~/.agents/` directory.
 
+Docs and project hub: **[tallmadge.dev](https://tallmadge.dev)**
+
 ---
 
 ## Why "Tallmadge" & `clpr`?

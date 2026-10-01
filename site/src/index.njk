@@ -1,0 +1,113 @@
+---
+title: Home
+layout: base.njk
+---
+
+<section class="hero">
+  <div class="wrap">
+    <p class="eyebrow">~/.agents, organized</p>
+    <h1>Tallmadge</h1>
+    <p class="tagline">
+      A package manager and environment switcher for AI coding agents —
+      skills, plugins, MCP servers, and marketplaces, all built around the
+      standard <code>~/.agents/</code> directory.
+    </p>
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="{{ site.repo }}#installation">Install</a>
+      <a class="btn" href="{{ site.repo }}">Read the docs</a>
+    </div>
+    <pre class="install-snippet"><code>brew tap kplawver/tap
+brew install tallmadge</code></pre>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <p class="section-kicker">What it does</p>
+    <h2>One source of truth for every agent</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>Global plugin store</h3>
+        <p>Install from a local path, git repo, GitHub shorthand, marketplace catalog, or <code>.agents</code> Hub bundle. Everything lands in <code>~/.tallmadge/store</code>.</p>
+      </div>
+      <div class="card">
+        <h3>Selective activation</h3>
+        <p>Symlink exactly the skills, agents, tasks, and memories you want into the standard <code>~/.agents/</code> directories.</p>
+      </div>
+      <div class="card">
+        <h3>Composed, not clobbered</h3>
+        <p><code>AGENTS.md</code> and <code>mcp.json</code> are merged from every active plugin alongside your own content — no conflicts, no overwrites.</p>
+      </div>
+      <div class="card">
+        <h3>Harness bridging</h3>
+        <p>Twelve coding harnesses, one source of truth. clpr bridges the config gaps for tools that only read part of <code>~/.agents/</code>.</p>
+      </div>
+      <div class="card">
+        <h3>Switchable profiles</h3>
+        <p>Keep <code>work</code>, <code>personal</code>, and client setups as named profiles and switch the whole environment in one command.</p>
+      </div>
+      <div class="card">
+        <h3>Repo bridging</h3>
+        <p><code>clpr repo link</code> carries a repo's canonical <code>AGENTS.md</code> and <code>.agents/</code> layout to every harness your teammates use.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section section-alt" id="harnesses">
+  <div class="wrap">
+    <p class="section-kicker">Compatibility</p>
+    <h2>Twelve harnesses, bridged</h2>
+    <p class="section-lead">
+      Skills already load natively from <code>~/.agents/skills/</code>. Tallmadge
+      bridges global instructions, subagents, and MCP config for the rest —
+      the full matrix of what's native, bridged, or off-limits lives in the
+      <a href="{{ site.repo }}#harness-support">README</a>.
+    </p>
+    <ul class="chips">
+      {% set harnesses = ["Oh My Pi", "Pi", "Cline", "Kilo Code", "Amp", "Devin", "Claude Code", "Codex", "opencode", "Gemini CLI", "Cursor", "Copilot CLI"] %}
+      {% for harness in harnesses %}
+      <li class="chip">{{ harness }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <p class="section-kicker">Why the name</p>
+    <h2>A network of agents, organized</h2>
+    <p class="section-lead">
+      Named for Major Benjamin Tallmadge, spymaster of the Culper Ring —
+      Washington's network of agents operating under aliases across enemy
+      lines. Tallmadge does the same for your AI agents: a distributed
+      network, coordinated from one place.
+    </p>
+  </div>
+</section>
+
+<section class="section section-alt" id="projects">
+  <div class="wrap">
+    <p class="section-kicker">Projects</p>
+    <h2>The members of the ring</h2>
+    <div class="grid">
+      {% for project in projects.projects %}
+      <div class="card project-card">
+        <h3><a href="{{ project.repo }}">{{ project.name }}</a></h3>
+        <p class="project-tagline">{{ project.tagline }}</p>
+        <p>{{ project.description }}</p>
+        <p class="project-install">Install: <code>{{ project.install }}</code></p>
+        <ul class="tags">
+          {% for tag in project.tags %}
+          <li>{{ tag }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endfor %}
+      <div class="card card-ghost">
+        <h3>More soon</h3>
+        <p>This hub will grow to cover related projects — plugins, marketplaces, and harness tooling.</p>
+      </div>
+    </div>
+  </div>
+</section>
