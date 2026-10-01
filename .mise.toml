@@ -1,0 +1,4 @@
+# Toolchain pins — CI installs the same versions via jdx/mise-action in
+# .github/workflows/site.yml. Add ruby here if you want mise to manage it too.
+[tools]
+node = "22"

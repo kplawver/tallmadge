@@ -1,0 +1,8 @@
+{
+  "name": "Tallmadge",
+  "title": "Tallmadge",
+  "description": "A package manager and environment switcher for AI agent harnesses — skills, plugins, MCP servers, and marketplaces built around ~/.agents/.",
+  "url": "https://tallmadge.dev",
+  "repo": "https://github.com/kplawver/tallmadge",
+  "author": "Kevin Lawver"
+}

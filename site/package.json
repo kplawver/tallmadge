@@ -1,0 +1,13 @@
+{
+  "name": "tallmadge-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "tallmadge.dev — project hub for Tallmadge (clpr), built with Eleventy",
+  "scripts": {
+    "dev": "eleventy --serve",
+    "build": "eleventy"
+  },
+  "devDependencies": {
+    "@11ty/eleventy": "^3.0.0"
+  }
+}
