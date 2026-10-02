@@ -7,6 +7,22 @@
       "repo": "https://github.com/kplawver/tallmadge",
       "install": "brew install tallmadge",
       "tags": ["Ruby", "CLI", "Homebrew"]
+    },
+    {
+      "name": "Clothesline",
+      "tagline": "Durable local messaging between coding agents",
+      "description": "A local message bus for coding agents: agents announce presence, open conversations, and exchange messages that stay retained and keyword-searchable until you delete the database. A read-only browser shows who's online and what was said.",
+      "repo": "https://github.com/kplawver/clothesline",
+      "install": "brew install clothesline",
+      "tags": ["Python", "MCP", "Homebrew"]
+    },
+    {
+      "name": "Setauket",
+      "tagline": "Local, cross-harness memory for coding agents",
+      "description": "A local context store for coding-agent sessions: submitted turns stay searchable for three days, then get summarized; decisions and preferences remain versioned until explicitly superseded. Search is keyword and semantic, all on your machine.",
+      "repo": "https://github.com/kplawver/setauket",
+      "install": "brew install setauket",
+      "tags": ["Python", "MCP", "Homebrew"]
     }
   ]
 }
