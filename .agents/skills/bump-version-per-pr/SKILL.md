@@ -7,6 +7,8 @@ description: Use when preparing, committing, or shipping any PR in tallmadge; ev
 
 Every PR to tallmadge MUST raise the version by at least a patch.
 
+**Exception:** changes that don't touch the Ruby gem — e.g. `site/` (the tallmadge.dev website) or `.agents/` skills — do not need a bump. The gem version tracks the Ruby CLI, not the website or skill text.
+
 ## Choose the bump
 
 - If the user named the bump (patch, minor, major, or an exact version), use it.
