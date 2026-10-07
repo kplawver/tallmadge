@@ -66,13 +66,14 @@ module Tallmadge
     def scan_components(dir)
       components = {
         "skills" => {}, "agents" => {}, "tasks" => {}, "memories" => {},
-        "mcpServers" => {}, "agentsMd" => nil
+        "mcpServers" => {}, "agentsMd" => nil, "hooks" => {}
       }
       scan_skills(dir, components)
       scan_agents(dir, components)
       scan_tasks(dir, components)
       scan_memories(dir, components)
       scan_mcp(dir, components)
+      scan_hooks(dir, components)
       scan_agents_md(dir, components)
       components
     end
@@ -132,6 +133,75 @@ module Tallmadge
 
     def scan_mcp(dir, components)
       mcp_servers_in(dir).each_key { |name| components["mcpServers"][name] = inactive }
+    end
+
+    def scan_hooks(dir, components)
+      hooks_in(dir).each_key { |hook_id| components["hooks"][hook_id] = inactive }
+    end
+
+    # {hook_id => {"event", "matcher", "handler"}} from hooks/hooks.json plus
+    # whatever the plugin manifest's "hooks" key declares. Ids hash the
+    # handler's content, so an updated command is a new, inactive hook.
+    def hooks_in(dir)
+      hook_event_maps(dir).each_with_object({}) do |event_map, found|
+        event_map.each do |event, groups|
+          Array(groups).each do |group|
+            next unless group.is_a?(Hash)
+
+            Array(group["hooks"]).each do |handler|
+              next unless handler.is_a?(Hash)
+
+              found[hook_id(event, group["matcher"], handler)] =
+                { "event" => event, "matcher" => group["matcher"], "handler" => handler }
+            end
+          end
+        end
+      end
+    end
+
+    # hooks for an installed plugin.
+    def hooks(id)
+      hooks_in(Paths.plugin_dir(id))
+    end
+
+    def hook_id(event, matcher, handler)
+      digest = Digest::SHA256.hexdigest(JSON.generate(canonical([event, matcher, handler])))
+      "#{event}:#{digest[0, 8]}"
+    end
+
+    # Recursively key-sorted copy so key order never changes a hook id.
+    def canonical(value)
+      case value
+      when Hash then value.sort.to_h { |k, v| [k, canonical(v)] }
+      when Array then value.map { |v| canonical(v) }
+      else value
+      end
+    end
+
+    # Event maps (event => matcher groups) from hooks/hooks.json (wrapped in
+    # a top-level "hooks" key) and the manifest's hooks key: a path to such
+    # a file, an inline event map, or an array of either.
+    def hook_event_maps(dir)
+      maps = [hooks_file_map(File.join(dir, "hooks", "hooks.json"), dir)]
+      %w[.claude-plugin .omp-plugin].each do |meta_dir|
+        manifest = File.join(dir, meta_dir, "plugin.json")
+        next unless File.file?(manifest)
+
+        data = JSON.parse(File.read(manifest)) rescue {}
+        entries = data["hooks"].is_a?(Array) ? data["hooks"] : [data["hooks"]].compact
+        entries.each do |entry|
+          maps << (entry.is_a?(String) ? hooks_file_map(File.expand_path(entry, dir), dir) : entry)
+        end
+      end
+      maps.select { |m| m.is_a?(Hash) }
+    end
+
+    # Event map from a hooks file; {} when absent, invalid, or outside dir.
+    def hooks_file_map(path, dir)
+      return {} unless path.start_with?(File.expand_path(dir) + File::SEPARATOR) && File.file?(path)
+
+      data = JSON.parse(File.read(path)) rescue {}
+      data.is_a?(Hash) ? data["hooks"] : {}
     end
 
     # mcpServers map from dir's mcp.json/.mcp.json; {} when absent or invalid.

@@ -38,6 +38,7 @@ module Tallmadge
         @state.user_content["mcpJson"] = nil
         @state.composed["agentsMd"] = false
         @state.composed["mcpJson"] = false
+        @state.composed["hooksJson"] = false
         @state.mcp_origins.clear
         @state.save
 

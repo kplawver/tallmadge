@@ -137,4 +137,55 @@ class ActivatorTest < Minitest::Test
     refute File.symlink?(agents("agents", "greeter"))
     refute state.plugins["demo"].dig("components", "agents", "greeter", "active")
   end
+
+  HOOKS_JSON = {
+    "hooks" => {
+      "PreToolUse" => [
+        { "matcher" => "Bash",
+          "hooks" => [{ "type" => "command", "command" => "${CLAUDE_PLUGIN_ROOT}/check.sh" }] }
+      ],
+      "Stop" => [{ "hooks" => [{ "type" => "command", "command" => "echo done" }] }]
+    }
+  }.freeze
+
+  def install_hooked(id: "hooked", hooks: HOOKS_JSON)
+    dir = home("fixture", id)
+    write File.join(dir, "hooks", "hooks.json"), JSON.generate(hooks)
+    capture_io { Tallmadge::Installer.new(state).install_path(dir, as: id) }
+  end
+
+  def test_activate_composes_hooks_json_with_resolved_plugin_root
+    install_hooked
+    activate("hooked")
+
+    composed = JSON.parse(File.read(agents("hooks.json")))
+    pre = composed.dig("hooks", "PreToolUse", 0)
+    assert_equal "Bash", pre["matcher"]
+    assert_equal "#{store('hooked')}/check.sh", pre.dig("hooks", 0, "command")
+    refute composed.dig("hooks", "Stop", 0).key?("matcher")
+    assert state.composed["hooksJson"]
+  end
+
+  def test_activate_single_hook_and_deactivate_removes_file
+    install_hooked
+    stop_id = state.plugins["hooked"]["components"]["hooks"].keys.find { |k| k.start_with?("Stop:") }
+    activate("hooked", only: [["hooks", stop_id]])
+
+    composed = JSON.parse(File.read(agents("hooks.json")))
+    assert_equal ["Stop"], composed["hooks"].keys
+
+    deactivate("hooked")
+    refute File.exist?(agents("hooks.json"))
+    refute state.composed["hooksJson"]
+  end
+
+  def test_unmanaged_hooks_json_is_not_overwritten
+    write agents("hooks.json"), '{"hooks":{}}'
+    install_hooked
+    out, err = activate("hooked")
+
+    assert_equal '{"hooks":{}}', File.read(agents("hooks.json"))
+    assert_match(/not managed by tallmadge/, out + err)
+    refute state.composed["hooksJson"]
+  end
 end

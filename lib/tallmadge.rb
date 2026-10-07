@@ -3,6 +3,7 @@
 require "thor"
 require "rainbow"
 require "json"
+require "digest"
 require "fileutils"
 require "tmpdir"
 require "open3"

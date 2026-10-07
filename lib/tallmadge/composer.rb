@@ -100,6 +100,32 @@ module Tallmadge
       Reporter.ok "composed #{target} (#{servers.size} server#{servers.size == 1 ? '' : 's'})"
     end
 
+    # Composes ~/.agents/hooks.json (Claude-shaped: {"hooks": {event => groups}})
+    # from active plugin hooks. An existing unmanaged file is left alone.
+    def compose_hooks_json!
+      target = File.join(Paths.agents_home, "hooks.json")
+      events = active_hook_events
+
+      if events.empty?
+        if @state.composed["hooksJson"] && File.exist?(target)
+          File.delete(target)
+          Reporter.info "removed composed hooks.json (no active hooks left)"
+        end
+        @state.composed["hooksJson"] = false
+        return
+      end
+
+      if File.exist?(target) && !@state.composed["hooksJson"]
+        Reporter.warn "#{target} exists and is not managed by tallmadge; active hooks not composed"
+        return
+      end
+
+      write_atomic(target, JSON.pretty_generate({ "hooks" => events }) + "\n")
+      @state.composed["hooksJson"] = true
+      count = events.values.sum { |groups| groups.sum { |g| g["hooks"].size } }
+      Reporter.ok "composed #{target} (#{count} hook#{count == 1 ? '' : 's'})"
+    end
+
     def remove_composed_files!
       agents_md_target = File.join(Paths.agents_home, "agents.md")
       if @state.composed["agentsMd"] && File.exist?(agents_md_target) && agents_md_managed?(agents_md_target)
@@ -113,6 +139,10 @@ module Tallmadge
       end
       @state.composed["mcpJson"] = false
       @state.mcp_origins.clear
+
+      hooks_target = File.join(Paths.agents_home, "hooks.json")
+      File.delete(hooks_target) if @state.composed["hooksJson"] && File.exist?(hooks_target)
+      @state.composed["hooksJson"] = false
     end
 
     def agents_md_managed?(target)
@@ -134,6 +164,39 @@ module Tallmadge
     end
 
     private
+
+    PLUGIN_ROOT_VAR = "${CLAUDE_PLUGIN_ROOT}"
+
+    # {event => [{"matcher", "hooks" => [handler]}]} for every active hook,
+    # with the plugin-root variable resolved to the plugin's store dir.
+    def active_hook_events
+      events = Hash.new { |h, event| h[event] = [] }
+      @state.profile_plugins.each do |id, entry|
+        active = ((entry["components"] || {})["hooks"] || {}).select { |_, info| info["active"] }
+        next if active.empty?
+
+        plugin_hooks = Store.hooks(id)
+        active.each_key do |hook_id|
+          hook = plugin_hooks[hook_id] or next
+          group = events[hook["event"]].find { |g| g["matcher"] == hook["matcher"] }
+          unless group
+            group = { "matcher" => hook["matcher"], "hooks" => [] }.compact
+            events[hook["event"]] << group
+          end
+          group["hooks"] << resolve_plugin_root(hook["handler"], Paths.plugin_dir(id))
+        end
+      end
+      events
+    end
+
+    def resolve_plugin_root(value, plugin_dir)
+      case value
+      when String then value.gsub(PLUGIN_ROOT_VAR, plugin_dir)
+      when Hash then value.transform_values { |v| resolve_plugin_root(v, plugin_dir) }
+      when Array then value.map { |v| resolve_plugin_root(v, plugin_dir) }
+      else value
+      end
+    end
 
     def adopt_agents_md!(target)
       adopt_composed_file!(target, "agentsMd", "agents.md", "user fragment")

@@ -18,7 +18,7 @@ The CLI binary is named **`clpr`** (*Culper*).
 
 1. **Global Plugin Store (`~/.tallmadge/store`)**: Installs plugins from local directories, git repositories, GitHub shorthand (`owner/repo`), marketplace catalogs (`plugin@marketplace`), or `.agents` Hub bundles.
 2. **Selective Activation (`~/.agents`)**: Symlinks active skills, agents, tasks, and memory files into standard `~/.agents/` subdirectories (`skills/`, `agents/`, `tasks/`, `memories/`).
-3. **Composed Files (`AGENTS.md` & `mcp.json`)**: Merges multiple plugin instructions and MCP server definitions alongside user-defined content without conflict.
+3. **Composed Files (`AGENTS.md`, `mcp.json` & `hooks.json`)**: Merges multiple plugin instructions, MCP server definitions, and lifecycle hooks alongside user-defined content without conflict.
 4. **Harness Bridging**: Bridges the gaps for thirteen coding harnesses (Cline, Kilo Code, Amp, Devin, Claude Code, Codex, opencode, Zed, Gemini CLI, Cursor, Copilot CLI, `omp`, `pi`) that read only part of `~/.agents` or keep their own configuration elsewhere (`~/.claude/`, `~/.config/kilo/`, `~/.cline/`, `~/.config/zed/`, …). See [Harness Support](#harness-support).
 5. **Switchable Profiles**: Create named profiles (e.g., `work`, `personal`) to instantly switch active plugins, marketplaces, adopted `AGENTS.md` fragments, and MCP servers without reinstalling.
 
@@ -78,8 +78,8 @@ clpr restore --from ~/.tallmadge/backups/YYYYMMDDTHHMMSSZ-agents-backup
   clpr install https://github.com/user/agent-plugin.git
   clpr install user/agent-plugin --as my-alias
   ```
-- **`clpr activate <id> ...`**: Symlink plugins' components into `~/.agents/` and compose `AGENTS.md` / `mcp.json`. Accepts multiple ids.
-  - Filter by component: `--skill <name>`, `--agent <name>`, `--task <name>`, `--memory <name>`, `--mcp <name>` (applies to every id given).
+- **`clpr activate <id> ...`**: Symlink plugins' components into `~/.agents/` and compose `AGENTS.md` / `mcp.json` / `hooks.json`. Accepts multiple ids.
+  - Filter by component: `--skill <name>`, `--agent <name>`, `--task <name>`, `--memory <name>`, `--mcp <name>`, `--hook <id>` (applies to every id given). Hook ids look like `PreToolUse:1a2b3c4d` (event plus a hash of the handler) and are listed by `clpr list`; a plugin update that changes a hook's command produces a new, inactive hook.
   - Force override conflicts: `--force`.
   ```bash
   clpr activate my-plugin
@@ -212,7 +212,7 @@ At repo scope, `clpr repo link` applies the same idea to a project's own `.agent
 | Amp | `amp` | `skills/` | `~/.config/amp/AGENTS.md` | subagents (TypeScript plugins), MCP (`amp.mcpServers` in `settings.json`) |
 | Devin CLI | `devin` | `skills/` | `~/.config/devin/AGENTS.md`, `agents/<name>/`, `mcp_config.json` | — (cloud Devin reads repo files only) |
 | Claude Code | `claude` | — | `~/.claude/CLAUDE.md`, `skills/<name>`, `agents/<name>.md` | MCP (`~/.claude.json` also holds app state) |
-| Codex CLI | `codex` | `skills/` | `~/.codex/AGENTS.md` | subagents and MCP (TOML in `~/.codex`) |
+| Codex CLI | `codex` | `skills/` | `~/.codex/AGENTS.md`, `hooks.json` | subagents and MCP (TOML in `~/.codex`) |
 | opencode | `opencode` | `skills/` | `~/.config/opencode/AGENTS.md`, `agent/<name>.md` | MCP (`mcp` key inside `opencode.json`) |
 | Zed | `zed` | `skills/` | `~/.config/zed/AGENTS.md` | MCP (`context_servers` in `settings.json`); subagents built-in (`spawn_agent`), not file-defined |
 | Gemini CLI | `gemini` | `skills/` | `~/.gemini/GEMINI.md`, `agents/<name>.md` | MCP (`mcpServers` in `settings.json`) |
@@ -224,6 +224,7 @@ Notes:
 - **Filename casing.** Harnesses that read `~/.agents/AGENTS.md` (Cline, `omp`) stat that exact name, while clpr composes lowercase `agents.md`. On a case-sensitive filesystem `clpr link` adds an `AGENTS.md` → `agents.md` symlink; on macOS's case-insensitive default it is unnecessary and is skipped.
 - **MCP is only bridged where a harness reads a dedicated `{"mcpServers": {…}}` file.** Where servers live inside a larger config (Amp, Kilo, opencode, Gemini, Codex) or a file that also stores app state (Claude Code), a symlink would clobber unrelated settings, so clpr leaves it alone and says so in `clpr doctor`.
 - **A bridged MCP file is clpr's to own.** `cline mcp add` and `devin mcp add -s user` write into the very file clpr linked, so servers added that way are replaced on the next compose. Add them with `clpr mcp add` instead and every harness gets them.
+- **Hooks are composed, and bridged only where a dedicated shared-format file exists.** Plugin hooks (`hooks/hooks.json` or the manifest's `hooks` key) become `~/.agents/hooks.json` in the Claude `{"hooks": {event: [matcher groups]}}` shape, with `${CLAUDE_PLUGIN_ROOT}` resolved to the plugin's store directory. Only Codex reads such a file (`~/.codex/hooks.json`), so only Codex is bridged; Codex asks you to review and trust the hooks before they run. Claude Code and Gemini CLI keep hooks inside `settings.json`, and Cursor uses its own schema, so clpr never writes to them. clpr will not overwrite an existing unmanaged `~/.agents/hooks.json`. Hooks run arbitrary commands; check them with `clpr list` before activating.
 - **Relocated homes are honored**: `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `CLINE_DIR`, `COPILOT_HOME`, `CURSOR_CONFIG_DIR`, and `XDG_CONFIG_HOME` (Amp, Devin, Kilo, opencode).
 - **Cloud-only agents have nothing to bridge.** Devin's web app, Jules, and the GitHub Copilot coding agent read `AGENTS.md` from the repository, not from your home directory; commit one to your project instead. The `devin` adapter targets the local Devin CLI.
 - Paths above were verified against each harness's documentation or source in September and October 2026.

@@ -16,6 +16,9 @@ module Tallmadge
   #   mcp                file fed by the composed ~/.agents/mcp.json
   #                      (only where the harness reads a dedicated
   #                      {"mcpServers": {...}} file)
+  #   hooks              file fed by the composed ~/.agents/hooks.json
+  #                      (only where the harness reads a dedicated
+  #                      {"hooks": {event: [matcher groups]}} file)
   #   uppercaseAgentsMd  harness reads ~/.agents/AGENTS.md by exact name,
   #                      which the composed lowercase agents.md only
   #                      satisfies on a case-insensitive filesystem
@@ -108,8 +111,11 @@ module Tallmadge
         "detect" => [".codex"],
         "env" => { "var" => "CODEX_HOME", "prefix" => ".codex" },
         "native" => %w[skills],
-        "bridge" => { "instructions" => ".codex/AGENTS.md" },
-        "notes" => ["subagents and MCP servers are TOML (~/.codex) — not bridged"]
+        "bridge" => { "instructions" => ".codex/AGENTS.md", "hooks" => ".codex/hooks.json" },
+        "notes" => [
+          "subagents and MCP servers are TOML (~/.codex) — not bridged",
+          "Codex asks you to review and trust bridged hooks (/hooks) before they run"
+        ]
       },
       "opencode" => {
         "label" => "opencode",
@@ -152,7 +158,10 @@ module Tallmadge
           "agents" => { "dir" => ".cursor/agents", "layout" => "flat" },
           "mcp" => ".cursor/mcp.json"
         },
-        "notes" => ["user rules live in Cursor's settings UI, not a file — agents.md is not bridged"]
+        "notes" => [
+          "user rules live in Cursor's settings UI, not a file — agents.md is not bridged",
+          "hooks use Cursor's own hooks.json schema, not the shared one — not bridged"
+        ]
       },
       "copilot" => {
         "label" => "GitHub Copilot CLI",
@@ -248,6 +257,10 @@ module Tallmadge
       File.join(Paths.agents_home, "mcp.json")
     end
 
+    def hooks_json_path
+      File.join(Paths.agents_home, "hooks.json")
+    end
+
     # Harnesses that read ~/.agents/AGENTS.md match the name byte for byte,
     # so the composed lowercase agents.md is invisible to them on a
     # case-sensitive filesystem. Probe the skeleton's skills/ directory
@@ -275,6 +288,10 @@ module Tallmadge
 
       if (rel = bridge["mcp"]) && File.exist?(mcp_json_path)
         links[harness_path(harness_id, rel)] = mcp_json_path
+      end
+
+      if (rel = bridge["hooks"]) && state.composed["hooksJson"] && File.exist?(hooks_json_path)
+        links[harness_path(harness_id, rel)] = hooks_json_path
       end
 
       if (rel = bridge["skills"])
@@ -553,7 +570,7 @@ module Tallmadge
             Reporter.info "#{child_path}: not managed by tallmadge"
             found = true
           end
-        elsif entry_name.casecmp?("agents.md") || entry_name.casecmp?("mcp.json")
+        elsif %w[agents.md mcp.json hooks.json].any? { |name| entry_name.casecmp?(name) }
           if composed_by_tallmadge?(state, path, entry_name)
             Reporter.ok "#{path}: composed by tallmadge"
           else
@@ -579,6 +596,8 @@ module Tallmadge
       if entry_name.casecmp?("agents.md")
         first = File.open(path, &:readline).strip rescue ""
         first == Activator::AGENTS_MD_MARKER
+      elsif entry_name.casecmp?("hooks.json")
+        state.composed["hooksJson"]
       else
         state.composed["mcpJson"]
       end
@@ -627,6 +646,7 @@ module Tallmadge
       slots << "skills" if bridge["skills"]
       slots << "agents" if bridge["agents"]
       slots << "mcp.json" if bridge["mcp"]
+      slots << "hooks.json" if bridge["hooks"]
       slots
     end
   end
