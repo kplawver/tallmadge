@@ -312,4 +312,27 @@ class HarnessTest < Minitest::Test
   ensure
     previous.each { |key, value| ENV[key] = value }
   end
+
+  def test_codex_bridges_hooks_json_only_while_hooks_are_composed
+    FileUtils.mkdir_p(home(".codex"))
+    dir = home("fixture", "hk")
+    write File.join(dir, "hooks", "hooks.json"),
+          JSON.generate("hooks" => { "Stop" => [{ "hooks" => [{ "type" => "command", "command" => "echo" }] }] })
+    capture_io { Tallmadge::Installer.new(state).install_path(dir, as: "hk") }
+    capture_io { Tallmadge::Activator.new(state).activate("hk") }
+    capture_io { Tallmadge::Harness.link(state, "codex") }
+
+    link = home(".codex", "hooks.json")
+    assert_equal agents("hooks.json"), File.readlink(link)
+
+    capture_io { Tallmadge::Activator.new(state).deactivate("hk") }
+    refute File.symlink?(link)
+  end
+
+  def test_codex_does_not_bridge_unmanaged_hooks_json
+    FileUtils.mkdir_p(home(".codex"))
+    write agents("hooks.json"), '{"hooks":{}}'
+    capture_io { Tallmadge::Harness.link(state, "codex") }
+    refute File.exist?(home(".codex", "hooks.json"))
+  end
 end

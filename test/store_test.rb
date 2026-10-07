@@ -79,4 +79,56 @@ class StoreTest < Minitest::Test
     assert_equal File.join(dir, ".claude-plugin", "marketplace.json"),
                  Tallmadge::Store.marketplace_catalog_path(dir)
   end
+
+  def test_hook_ids_follow_content_not_position_or_key_order
+    dir = home("fixture", "hooky")
+    write File.join(dir, "hooks", "hooks.json"), JSON.generate(
+      "hooks" => { "Stop" => [{ "hooks" => [{ "type" => "command", "command" => "a" },
+                                            { "type" => "command", "command" => "b" }] }] }
+    )
+    before = Tallmadge::Store.scan_components(dir)["hooks"].keys
+
+    write File.join(dir, "hooks", "hooks.json"), JSON.generate(
+      "hooks" => { "Stop" => [{ "hooks" => [{ "command" => "b", "type" => "command" },
+                                            { "type" => "command", "command" => "a" }] }] }
+    )
+    assert_equal before.sort, Tallmadge::Store.scan_components(dir)["hooks"].keys.sort
+
+    write File.join(dir, "hooks", "hooks.json"), JSON.generate(
+      "hooks" => { "Stop" => [{ "hooks" => [{ "type" => "command", "command" => "a" },
+                                            { "type" => "command", "command" => "evil" }] }] }
+    )
+    after = Tallmadge::Store.scan_components(dir)["hooks"].keys
+    assert_equal 1, (before & after).size
+    assert_equal 1, (after - before).size
+  end
+
+  def test_scan_hooks_from_manifest_path_and_inline_but_not_outside_plugin
+    dir = home("fixture", "manifested")
+    write File.join(dir, "config", "extra.json"),
+          JSON.generate("hooks" => { "PostToolUse" => [{ "hooks" => [{ "type" => "command", "command" => "x" }] }] })
+    write File.join(home("fixture"), "outside.json"),
+          JSON.generate("hooks" => { "Stop" => [{ "hooks" => [{ "type" => "command", "command" => "y" }] }] })
+    write File.join(dir, ".claude-plugin", "plugin.json"), JSON.generate(
+      "hooks" => ["./config/extra.json", "../../outside.json",
+                  { "SessionStart" => [{ "hooks" => [{ "type" => "command", "command" => "z" }] }] }]
+    )
+
+    events = Tallmadge::Store.hooks_in(dir).values.map { |h| h["event"] }
+    assert_equal %w[PostToolUse SessionStart], events.sort
+  end
+
+  def test_scan_hooks_from_bare_inline_manifest_map_and_single_path
+    inline = home("fixture", "inline")
+    write File.join(inline, ".claude-plugin", "plugin.json"), JSON.generate(
+      "hooks" => { "SessionStart" => [{ "hooks" => [{ "type" => "command", "command" => "z" }] }] }
+    )
+    assert_equal %w[SessionStart], Tallmadge::Store.hooks_in(inline).values.map { |h| h["event"] }
+
+    pathed = home("fixture", "pathed")
+    write File.join(pathed, "config", "h.json"),
+          JSON.generate("hooks" => { "Stop" => [{ "hooks" => [{ "type" => "command", "command" => "s" }] }] })
+    write File.join(pathed, ".claude-plugin", "plugin.json"), JSON.generate("hooks" => "./config/h.json")
+    assert_equal %w[Stop], Tallmadge::Store.hooks_in(pathed).values.map { |h| h["event"] }
+  end
 end

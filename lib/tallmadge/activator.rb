@@ -8,6 +8,8 @@ module Tallmadge
   class Activator
     AGENTS_MD_MARKER = Composer::AGENTS_MD_MARKER
     LINK_SECTIONS = %w[skills agents tasks memories].freeze
+    # Components merged into composed files instead of symlinked.
+    COMPOSED_SECTIONS = %w[agentsMd mcpServers hooks].freeze
 
     attr_reader :state, :composer
 
@@ -30,7 +32,7 @@ module Tallmadge
       linked = 0
       pairs.each do |section, name|
         mark_active(entry, section, name, true)
-        next if section == "agentsMd" || section == "mcpServers"
+        next if COMPOSED_SECTIONS.include?(section)
 
         source = component_source(id, section, name)
         target = component_target(section, name, source)
@@ -40,6 +42,7 @@ module Tallmadge
 
       compose_agents_md!
       compose_mcp_json!
+      compose_hooks_json!
       @state.save
       maintain_harnesses
       Reporter.ok "activated #{Reporter.name(id)}" +
@@ -60,7 +63,7 @@ module Tallmadge
         next unless info && info["active"]
 
         mark_active(entry, section, name, false)
-        next if section == "agentsMd" || section == "mcpServers"
+        next if COMPOSED_SECTIONS.include?(section)
 
         source = component_source(id, section, name)
         target = component_target(section, name, source)
@@ -69,6 +72,7 @@ module Tallmadge
 
       compose_agents_md!
       compose_mcp_json!
+      compose_hooks_json!
       @state.save
       maintain_harnesses
       Reporter.ok "deactivated #{Reporter.name(id)}"
@@ -87,7 +91,7 @@ module Tallmadge
         all_pairs(components).each do |section, name|
           info = component_info(entry, section, name)
           next unless info && info["active"]
-          next if section == "agentsMd" || section == "mcpServers"
+          next if COMPOSED_SECTIONS.include?(section)
 
           source = component_source(id, section, name)
           target = component_target(section, name, source)
@@ -102,6 +106,7 @@ module Tallmadge
 
       compose_agents_md!
       compose_mcp_json!
+      compose_hooks_json!
       @state.save
       maintain_harnesses
     end
@@ -295,6 +300,10 @@ module Tallmadge
       @composer.compose_mcp_json!
     end
 
+    def compose_hooks_json!
+      @composer.compose_hooks_json!
+    end
+
     def remove_composed_files!
       @composer.remove_composed_files!
     end
@@ -312,7 +321,7 @@ module Tallmadge
       all_pairs(components).each do |section, name|
         info = component_info(entry, section, name)
         next unless info && info["active"]
-        next if section == "agentsMd" || section == "mcpServers"
+        next if COMPOSED_SECTIONS.include?(section)
 
         source = component_source(id, section, name)
         target = component_target(section, name, source)

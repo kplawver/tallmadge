@@ -97,13 +97,14 @@ module Tallmadge
       Installer.new(State.load).install(spec, as: options[:as], force: options[:force])
     end
 
-    desc "activate ID ...", "Symlink plugins' components into ~/.agents (and compose agents.md/mcp.json)"
+    desc "activate ID ...", "Symlink plugins' components into ~/.agents (and compose agents.md/mcp.json/hooks.json)"
     option :skill, desc: "Activate only this skill"
     option :agent, desc: "Activate only this agent"
     option :task, desc: "Activate only this task"
     option :memory, desc: "Activate only this memory file"
     option :force, type: :boolean, desc: "Back up and replace conflicting targets"
     option :mcp, desc: "Activate only this MCP server"
+    option :hook, desc: "Activate only this hook (id as shown by `clpr list`)"
     def activate(*ids)
       require_ids!(ids)
       state = State.load
@@ -118,6 +119,7 @@ module Tallmadge
     option :task, desc: "Deactivate only this task"
     option :memory, desc: "Deactivate only this memory file"
     option :mcp, desc: "Deactivate only this MCP server"
+    option :hook, desc: "Deactivate only this hook (id as shown by `clpr list`)"
     def deactivate(*ids)
       require_ids!(ids)
       activator = Activator.new(State.load)
@@ -249,6 +251,7 @@ module Tallmadge
         pairs = []
         pairs << ["skills", options[:skill]] if options[:skill]
         pairs << ["mcpServers", options[:mcp]] if options[:mcp]
+        pairs << ["hooks", options[:hook]] if options[:hook]
         pairs << ["agents", options[:agent]] if options[:agent]
         pairs << ["tasks", options[:task]] if options[:task]
         pairs << ["memories", options[:memory]] if options[:memory]
